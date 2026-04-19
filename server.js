@@ -26,7 +26,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', users: users.size, host: req.get('host') });
 });
 
-app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
 function encrypt(text) {
   const CryptoJS = require('crypto-js');
