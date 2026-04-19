@@ -3,73 +3,85 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DriveClean</title>
+  <title>DriveClean - Clean Your Google Drive</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    body { background: #0f0f1a; color: #eee; min-height: 100vh; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 15px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a14; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 15px; }
     h1 { text-align: center; color: #00d4ff; font-size: 1.8rem; margin-bottom: 5px; }
     .subtitle { text-align: center; color: #666; margin-bottom: 15px; font-size: 0.85rem; }
     
-    .login-section { text-align: center; padding: 80px 20px; }
-    .btn { background: #00d4ff; color: #0f0f1a; border: none; padding: 14px 35px; font-size: 1rem; font-weight: bold; border-radius: 25px; cursor: pointer; transition: transform 0.2s; }
-    .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0,212,255,0.4); }
-    .btn-danger { background: #ff4757; color: #fff; }
-    .btn-warning { background: #ffa502; color: #0f0f1a; }
-    .btn-small { padding: 8px 16px; font-size: 0.8rem; border-radius: 15px; }
+    .login-section { text-align: center; padding: 100px 20px; }
+    .btn { background: linear-gradient(135deg, #00d4ff, #0099ff); color: #0a0a14; border: none; padding: 14px 40px; font-size: 1rem; font-weight: bold; border-radius: 30px; cursor: pointer; transition: all 0.3s; }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,212,255,0.4); }
+    .btn-danger { background: linear-gradient(135deg, #ff4757, #ff6b81); color: #fff; }
+    .btn-warning { background: linear-gradient(135deg, #ffa502, #ffbe00); color: #0a0a14; }
+    .btn-small { padding: 8px 16px; font-size: 0.8rem; border-radius: 20px; }
     .dashboard { display: none; }
     
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
     .user-info { display: flex; align-items: center; gap: 10px; }
     .user-info img { width: 36px; height: 36px; border-radius: 50%; border: 2px solid #00d4ff; }
     
-    .storage-bar { background: #1a1a2e; height: 20px; border-radius: 10px; margin: 15px 0; overflow: hidden; position: relative; }
+    .storage-bar { background: #1a1a2e; height: 24px; border-radius: 12px; margin: 15px 0; overflow: hidden; position: relative; }
     .storage-used { background: linear-gradient(90deg, #00d4ff, #0099ff); height: 100%; transition: width 0.5s; }
-    .storage-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 0.7rem; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+    .storage-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 0.7rem; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
     
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 15px; }
-    .stat-card { background: #1a1a2e; padding: 15px; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s; }
-    .stat-card:hover { transform: translateY(-2px); }
-    .stat-card h3 { color: #00d4ff; font-size: 1.3rem; margin-bottom: 3px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 15px; }
+    .stat-card { background: #161625; padding: 18px; border-radius: 12px; text-align: center; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
+    .stat-card:hover { border-color: #00d4ff; transform: translateY(-2px); }
+    .stat-card h3 { color: #00d4ff; font-size: 1.4rem; margin-bottom: 5px; }
     .stat-card p { color: #777; font-size: 0.75rem; }
     .stat-card .warning { color: #ff4757; }
     
-    .tabs { display: flex; gap: 5px; margin-bottom: 12px; border-bottom: 1px solid #252545; padding-bottom: 8px; overflow-x: auto; }
-    .tab { background: transparent; color: #777; border: none; padding: 10px 16px; font-size: 0.85rem; cursor: pointer; border-radius: 8px; white-space: nowrap; }
+    .tabs { display: flex; gap: 5px; margin-bottom: 12px; border-bottom: 1px solid #252545; padding-bottom: 10px; overflow-x: auto; flex-wrap: wrap; }
+    .tab { background: transparent; color: #777; border: none; padding: 10px 18px; font-size: 0.85rem; cursor: pointer; border-radius: 8px; white-space: nowrap; transition: all 0.2s; }
     .tab:hover { color: #00d4ff; }
-    .tab.active { background: #00d4ff; color: #0f0f1a; font-weight: 600; }
+    .tab.active { background: #00d4ff; color: #0a0a14; font-weight: 600; }
     
     .section { display: none; }
     .section.active { display: block; }
     
-    .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-    .file-card { background: #1a1a2e; border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.2s; }
-    .file-card:hover { transform: translateY(-2px); }
-    .thumbnail { width: 100%; height: 100px; background: #252545; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .file-card { background: #161625; border-radius: 10px; overflow: hidden; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
+    .file-card:hover { border-color: #00d4ff; transform: translateY(-3px); }
+    .file-card.selected { border-color: #00d4ff; box-shadow: 0 0 20px rgba(0,212,255,0.3); }
+    .thumbnail { width: 100%; height: 100px; background: #1f1f35; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .thumbnail img { width: 100%; height: 100%; object-fit: cover; }
-    .thumbnail .icon { font-size: 2rem; }
-    .file-info { padding: 8px; }
-    .file-name { font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .file-meta { color: #666; font-size: 0.65rem; margin-top: 3px; }
+    .thumbnail .icon { font-size: 2.2rem; }
+    .file-info { padding: 10px; }
+    .file-name { font-size: 0.75rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+    .file-meta { color: #666; font-size: 0.65rem; margin-top: 5px; }
     
-    .actions-bar { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
-    .count-display { color: #888; font-size: 0.85rem; margin-left: auto; }
+    .actions-bar { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center; }
+    .count-display { color: #888; font-size: 0.9rem; margin-left: auto; }
     
-    .empty { text-align: center; padding: 40px; color: #555; }
+    .loading { text-align: center; padding: 60px; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #252545; border-top-color: #00d4ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     
-    .toast { position: fixed; bottom: 20px; right: 20px; background: #2ed573; color: #0f0f1a; padding: 12px 24px; border-radius: 8px; font-weight: 600; transform: translateY(100px); transition: transform 0.3s; }
+    .empty { text-align: center; padding: 50px; color: #555; }
+    .empty-icon { font-size: 3rem; margin-bottom: 10px; opacity: 0.5; }
+    
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #2ed573; color: #0a0a14; padding: 14px 28px; border-radius: 10px; font-weight: 600; transform: translateY(100px); transition: transform 0.3s; z-index: 1000; }
     .toast.show { transform: translateY(0); }
     .toast.error { background: #ff4757; color: #fff; }
     .toast.loading { background: #ffa502; }
+    
+    .progress-bar { position: fixed; top: 0; left: 0; height: 4px; background: #00d4ff; width: 0%; transition: width 0.3s; z-index: 9999; }
+    
+    .error-msg { background: #ff4757; color: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; text-align: center; }
   </style>
 </head>
 <body>
+  <div class="progress-bar" id="progressBar"></div>
+  
   <div class="container">
     <h1>DriveClean</h1>
-    <p class="subtitle">Clean your Google Drive automatically</p>
+    <p class="subtitle">Clean your Google Drive, Photos & Gmail</p>
     
     <div class="login-section" id="loginSection">
-      <p style="color:#888;margin-bottom:20px;">Connect your Google account</p>
+      <p style="color:#888;margin-bottom:20px;">Connect your Google account to scan and clean</p>
       <button class="btn" onclick="login()">Connect Google Account</button>
     </div>
     
@@ -98,9 +110,9 @@
       </div>
       
       <div class="tabs">
-        <button class="tab active" onclick="showTab('files')">Drive</button>
+        <button class="tab active" onclick="showTab('files')">All Files</button>
         <button class="tab" onclick="showTab('photos')">Photos</button>
-        <button class="tab" onclick="showTab('emails')">Gmail</button>
+        <button class="tab" onclick="showTab('emails')">Emails</button>
         <button class="tab" onclick="showTab('duplicates')">Duplicates</button>
         <button class="tab" onclick="showTab('large')">Large</button>
         <button class="tab" onclick="showTab('old')">Old</button>
@@ -112,12 +124,14 @@
       </div>
       
       <div class="actions-bar">
-        <button class="btn btn-small btn-danger" onclick="deleteSelected()">Delete Selected</button>
-        <button class="btn btn-small" onclick="scan()">Refresh</button>
+        <button class="btn btn-small" onclick="scan()">🔄 Refresh</button>
+        <button class="btn btn-small btn-warning" onclick="selectAll()">Select All</button>
+        <button class="btn btn-small btn-danger" onclick="deleteSelected()">🗑️ Delete</button>
+        <button class="btn btn-small btn-warning" onclick="moveToTrash()">📭 Trash</button>
         <span class="count-display" id="selectedCount">0 selected</span>
       </div>
       
-      <div class="section active" id="files"><div class="file-grid" id="fileGrid"></div></div>
+      <div class="section active" id="files"><div class="file-grid" id="fileGrid"><div class="loading"><div class="spinner"></div>Loading...</div></div></div>
       <div class="section" id="photos"><div class="file-grid" id="photoGrid"></div></div>
       <div class="section" id="emails"><div class="file-grid" id="emailGrid"></div></div>
       <div class="section" id="duplicates"><div class="file-grid" id="duplicateGrid"></div></div>
@@ -136,12 +150,11 @@
   <script>
     let scanData = {};
     let selectedFiles = new Set();
-    let currentTab = 'files';
     
-    function getIcon(mimeType, f) {
-      // Use actual thumbnail if available
-      if (f.thumbnailLink) return `<img src="${f.thumbnailLink}=w400-h400" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
-      if (f.iconLink) return `<img src="${f.iconLink}" style="object-fit:contain;padding:20px;" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
+    function getIcon(mimeType, item) {
+      if (item.baseUrl) return `<img src="${item.baseUrl}=w400-h400" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
+      if (item.thumbnailLink) return `<img src="${item.thumbnailLink}=w400-h400" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
+      if (item.iconLink) return `<img src="${item.iconLink}" style="object-fit:contain;padding:25px" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
       return getEmoji(mimeType);
     }
     
@@ -149,25 +162,33 @@
       if (mimeType?.includes('image')) return '🖼️';
       if (mimeType?.includes('video')) return '🎬';
       if (mimeType?.includes('audio')) return '🎵';
-      if (mimeType?.includes('document') || mimeType?.includes('sheet')) return '📄';
+      if (mimeType?.includes('document')) return '📄';
+      if (mimeType?.includes('sheet')) return '📊';
       if (mimeType?.includes('presentation')) return '📽️';
       if (mimeType?.includes('folder')) return '📁';
       if (mimeType?.includes('zip') || mimeType?.includes('rar') || mimeType?.includes('7z')) return '📦';
       if (mimeType?.includes('pdf')) return '📕';
-      if (mimeType?.includes('spreadsheet')) return '📊';
-      if (mimeType?.includes('.google-apps')) return '📌';
       return '📎';
     }
     
     async function login() {
-      const res = await fetch('/api/auth/url');
+      const res = await fetch('/api/auth/url', { credentials: 'include' });
       const { url } = await res.json();
       window.location.href = url;
     }
     
     async function checkUser() {
-      const res = await fetch('/api/user');
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('error')) {
+        showToast(params.get('error'), 'error');
+        window.history.replaceState({}, '', '/');
+      }
+      
+      console.log('Checking user...');
+      const res = await fetch('/api/user', { credentials: 'include' });
       const data = await res.json();
+      console.log('User data:', data);
+      
       if (data.loggedIn) {
         document.getElementById('loginSection').style.display = 'none';
         document.getElementById('dashboard').style.display = 'block';
@@ -180,7 +201,7 @@
     
     async function loadStorage() {
       try {
-        const res = await fetch('/api/storage');
+        const res = await fetch('/api/storage', { credentials: 'include' });
         const data = await res.json();
         if (data.usage) {
           const pct = ((data.usageInDrive || 0) / data.usage) * 100;
@@ -191,13 +212,28 @@
     }
     
     async function scan() {
-      showToast('Scanning...', 'loading');
-      const res = await fetch('/api/scan', { method: 'POST' });
-      const data = await res.json();
-      scanData = data;
-      updateStats();
-      renderAll();
-      hideToast();
+      showToast('Scanning your Drive, Photos & Gmail...', 'loading');
+      showProgress(10);
+      
+      try {
+        const res = await fetch('/api/scan', { method: 'POST', credentials: 'include' });
+        showProgress(90);
+        const data = await res.json();
+        scanData = data;
+        
+        updateStats();
+        renderAll();
+        hideToast();
+        showProgress(0);
+        showToast('Scan complete!');
+      } catch (e) {
+        showProgress(0);
+        showToast('Scan error: ' + e.message, 'error');
+      }
+    }
+    
+    function showProgress(pct) {
+      document.getElementById('progressBar').style.width = pct + '%';
     }
     
     function updateStats() {
@@ -214,49 +250,36 @@
     }
     
     function renderAll() {
-      renderGrid('fileGrid', (scanData.files || []).slice(0, 200));
-      renderGrid('photoGrid', (scanData.photos || []).slice(0, 200));
-      renderGrid('emailGrid', (scanData.emails || []).slice(0, 200));
-      renderGrid('duplicateGrid', (scanData.duplicates || []).slice(0, 200));
-      renderGrid('largeGrid', (scanData.large || []).slice(0, 200));
-      renderGrid('oldGrid', (scanData.old || []).slice(0, 200));
-      renderGrid('imageGrid', (scanData.images || []).slice(0, 200));
-      renderGrid('videoGrid', (scanData.videos || []).slice(0, 200));
-      renderGrid('emptyGrid', (scanData.empty || []).slice(0, 200));
-      renderGrid('promoGrid', (scanData.promotions || []).slice(0, 200));
-      renderGrid('spamGrid', (scanData.spam || []).slice(0, 200));
+      renderGrid('fileGrid', scanData.files || []);
+      renderGrid('photoGrid', scanData.photos || []);
+      renderGrid('emailGrid', scanData.emails || []);
+      renderGrid('duplicateGrid', scanData.duplicates || []);
+      renderGrid('largeGrid', scanData.large || []);
+      renderGrid('oldGrid', scanData.old || []);
+      renderGrid('imageGrid', scanData.images || []);
+      renderGrid('videoGrid', scanData.videos || []);
+      renderGrid('emptyGrid', scanData.empty || []);
+      renderGrid('promoGrid', scanData.promotions || []);
+      renderGrid('spamGrid', scanData.spam || []);
     }
     
     function renderGrid(id, items) {
       const container = document.getElementById(id);
       if (!items?.length) {
-        container.innerHTML = '<div class="empty">No items</div>';
+        container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>No items</div>';
         return;
       }
-      container.innerHTML = items.slice(0, 100).map(item => {
-        // Handle different item types (Drive files, Gmail, Photos)
+      
+      container.innerHTML = items.slice(0, 200).map(item => {
         const id = item.id;
-        const name = item.name || item.snippet || item.filename || item.baseUrl || 'Untitled';
-        const size = item.size || item.payload?.filename?.length || 0;
-        const mimeType = item.mimeType || item.mediaMetadata?.mimeType || 'application/octet-stream';
-        const createdTime = item.createdTime || item.internalDate;
-        const date = createdTime ? new Date(parseInt(createdTime)).toLocaleDateString() : '';
+        const name = item.name || item.snippet || 'Untitled';
+        const size = item.size || 0;
+        const mimeType = item.mimeType || 'application/octet-stream';
+        const date = item.createdTime ? new Date(item.createdTime).toLocaleDateString() : '';
+        const thumb = getIcon(mimeType, item);
+        const sel = selectedFiles.has(id) ? 'selected' : '';
         
-        const sel = selectedFiles.has(id) ? 'style="border:2px solid #00d4ff"' : '';
-        let thumb = '';
-        
-        // Use baseUrl for Google Photos (actual image URLs)
-        if (item.baseUrl) {
-          thumb = `<img src="${item.baseUrl}=w400-h400" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
-        } else if (item.thumbnailLink) {
-          thumb = `<img src="${item.thumbnailLink}=w400-h400" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
-        } else if (item.iconLink) {
-          thumb = `<img src="${item.iconLink}" style="object-fit:contain;padding:25px;width:100%;height:100%" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
-        } else {
-          thumb = `<span class="icon">${getEmoji(mimeType)}</span>`;
-        }
-        
-        return `<div class="file-card" onclick="toggle('${id}')" ${sel}><div class="thumbnail">${thumb}</div><div class="file-info"><div class="file-name" title="${name}">${name}</div><div class="file-meta">${f(size)} ${date ? '•' + date : ''}</div></div></div>`;
+        return `<div class="file-card ${sel}" onclick="toggle('${id}')"><div class="thumbnail">${thumb}</div><div class="file-info"><div class="file-name" title="${name}">${name}</div><div class="file-meta">${f(size)} ${date ? '•' + date : ''}</div></div></div>`;
       }).join('');
     }
     
@@ -264,42 +287,71 @@
       if (selectedFiles.has(id)) selectedFiles.delete(id);
       else selectedFiles.add(id);
       document.getElementById('selectedCount').textContent = selectedFiles.size + ' selected';
+      renderAll();
+    }
+    
+    function selectAll() {
+      const items = getCurrentItems();
+      items.forEach(i => selectedFiles.add(i.id));
+      document.getElementById('selectedCount').textContent = selectedFiles.size + ' selected';
+      renderAll();
+      showToast(selectedFiles.size + ' selected');
+    }
+    
+    function getCurrentItems() {
+      const tabMap = {
+        files: 'files', photos: 'photos', emails: 'emails', duplicates: 'duplicates',
+        large: 'large', old: 'old', images: 'images', videos: 'videos',
+        empty: 'empty', promotions: 'promotions', spam: 'spam'
+      };
+      const key = tabMap[currentTab] || 'files';
+      return scanData[key] || [];
     }
     
     async function deleteSelected() {
       if (selectedFiles.size === 0) return showToast('No files selected', 'error');
-      if (!confirm('Delete ' + selectedFiles.size + ' files?')) return;
+      if (!confirm('Delete ' + selectedFiles.size + ' files permanently?')) return;
+      
       const fileIds = Array.from(selectedFiles);
-      await fetch('/api/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ fileIds }) });
+      await fetch('/api/delete', { method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ fileIds }) });
       selectedFiles.clear();
       showToast(fileIds.length + ' files deleted');
       scan();
     }
     
+    async function moveToTrash() {
+      if (selectedFiles.size === 0) return showToast('No files selected', 'error');
+      const fileIds = Array.from(selectedFiles);
+      await fetch('/api/trash', { method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ fileIds }) });
+      selectedFiles.clear();
+      showToast(fileIds.length + ' moved to trash');
+      scan();
+    }
+    
+    let currentTab = 'files';
     function showTab(tab) {
       currentTab = tab;
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      
       const tabs = ['files','photos','emails','duplicates','large','old','images','videos','empty','promotions','spam'];
-      document.querySelectorAll('.tab')[tabs.indexOf(tab)]?.classList.add('active');
-      document.getElementById(tab)?.classList.add('active');
+      const tabEl = document.querySelectorAll('.tab')[tabs.indexOf(tab)];
+      if (tabEl) tabEl.classList.add('active');
+      document.getElementById(tab).classList.add('active');
     }
     
     function showToast(msg, type='success') {
       const t = document.getElementById('toast');
-      t.textContent = msg; t.className = 'toast show ' + type;
+      t.textContent = msg;
+      t.className = 'toast show ' + type;
       setTimeout(() => t.classList.remove('show'), 3000);
     }
     
-    function hideToast() {
-      document.getElementById('toast').classList.remove('show');
-    }
-    
     function f(bytes) {
-      if (!bytes) return '0 B';
+      if (!bytes || bytes === '0') return '0 B';
       const u = ['B','KB','MB','GB','TB'];
       let i = 0;
-      while (bytes >= 1024 && i < u.length-1) { bytes /= 1024; i++; }
+      while (parseInt(bytes) >= 1024 && i < u.length-1) { bytes /= 1024; i++; }
       return bytes.toFixed(1) + ' ' + u[i];
     }
     

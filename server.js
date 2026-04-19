@@ -17,25 +17,25 @@ const config = {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     redirectUri: process.env.REDIRECT_URI || ''
   },
-  sessionSecret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
-  encryptionKey: process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex')
+  sessionSecret: process.env.SESSION_SECRET || 'driveclean-secret',
+  encryptionKey: process.env.ENCRYPTION_KEY || 'driveclean-key'
 };
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '50mb' }));
-app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(session({
   secret: config.sessionSecret,
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true,
   cookie: { 
+    httpOnly: true,
     secure: false,
     maxAge: 24 * 60 * 60 * 1000,
-    httpOnly: false,
     sameSite: 'lax'
   }
 }));
@@ -47,21 +47,23 @@ function encrypt(text) {
 
 function decrypt(encrypted) {
   const CryptoJS = require('crypto-js');
-  return CryptoJS.AES.decrypt(encrypted, config.encryptionKey).toString(CryptoJS.enc.Utf8);
+  try {
+    return CryptoJS.AES.decrypt(encrypted, config.encryptionKey).toString(CryptoJS.enc.Utf8);
+  } catch (e) { return null; }
 }
 
 function createOAuth2Client() {
   return new google.auth.OAuth2(config.google.clientId, config.google.clientSecret, config.google.redirectUri);
 }
 
-// AUTH
+// ==================== AUTH ====================
+
 app.get('/api/auth/url', (req, res) => {
   const oauth2Client = createOAuth2Client();
   const scopes = [
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/drive.metadata.readonly',
-    'https://www.googleapis.com/auth/drive.readonly',
     'https://www.googleapis.com/auth/drive.photos.readonly',
     'https://www.googleapis.com/auth/photoslibrary.readonly',
     'https://www.googleapis.com/auth/gmail.readonly',
@@ -79,43 +81,68 @@ app.get('/api/auth/url', (req, res) => {
 
 app.get('/api/auth/callback', async (req, res) => {
   const { code, error: errorDesc } = req.query;
-  
   if (errorDesc) return res.redirect('/?error=' + encodeURIComponent(errorDesc));
   if (!code) return res.redirect('/?error=no_code');
   
   try {
     const oauth2Client = createOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
-    
     req.session.tokens = encrypt(JSON.stringify(tokens));
-    req.session.userEmail = tokens.email;
     
-    res.redirect('/');
+    // Force save session before redirect
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.redirect('/?error=session_failed');
+      }
+      console.log('Session saved, redirecting...');
+      res.redirect('/');
+    });
   } catch (err) {
     console.error('Auth error:', err.message);
     res.redirect('/?error=auth_failed');
   }
 });
 
+// ==================== USER ====================
+
 app.get('/api/user', (req, res) => {
-  if (!req.session.tokens) return res.json({ loggedIn: false });
+  console.log('Session ID:', req.sessionID);
+  console.log('Has tokens:', !!req.session.tokens);
+  
+  if (!req.session.tokens) return res.json({ loggedIn: false, sessionId: req.sessionID });
   
   try {
     const oauth2Client = createOAuth2Client();
-    const tokens = JSON.parse(decrypt(req.session.tokens));
+    const decrypted = decrypt(req.session.tokens);
+    console.log('Decrypted tokens:', !!decrypted);
+    
+    if (!decrypted) return res.json({ loggedIn: false, sessionId: req.sessionID });
+    
+    const tokens = JSON.parse(decrypted);
     oauth2Client.setCredentials(tokens);
     
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
     oauth2.userinfo.get((err, user) => {
-      if (err) return res.json({ loggedIn: false, error: err.message });
-      res.json({ loggedIn: true, user: { name: user.data.name, email: user.data.email, picture: user.data.picture } });
+      if (err) return res.json({ loggedIn: false, error: err.message, sessionId: req.sessionID });
+      res.json({ loggedIn: true, user: { name: user.data.name, email: user.data.email, picture: user.data.picture }, sessionId: req.sessionID });
     });
   } catch (e) {
-    res.json({ loggedIn: false, error: e.message });
+    res.json({ loggedIn: false, error: e.message, sessionId: req.sessionID });
   }
 });
 
-// STORAGE
+app.get('/api/debug', (req, res) => {
+  res.json({
+    sessionId: req.sessionID,
+    hasTokens: !!req.session.tokens,
+    cookie: req.headers.cookie,
+    userAgent: req.headers['user-agent']
+  });
+});
+
+// ==================== STORAGE ====================
+
 app.get('/api/storage', async (req, res) => {
   if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
   
@@ -123,43 +150,48 @@ app.get('/api/storage', async (req, res) => {
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
-    const about = await drive.about.get({ fields: 'storageQuota' });
+    const about = await drive.about.get({ fields: 'storageQuota,quotaBytesTotal,quotaBytesUsedAggregate' });
+    const quota = about.data.storageQuota || {};
     res.json({
-      usage: about.data.storageQuota?.limit || 0,
-      usageInDrive: about.data.storageQuota?.usageInDrive || 0
+      usage: quota.limit || 0,
+      usageInDrive: quota.usageInDrive || 0,
+      usageInTrash: quota.usageInTrash || 0,
+      totalUsed: about.data.quotaBytesUsedAggregate || 0
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// SCAN - ALL FILES
+// ==================== SCAN ====================
+
 app.post('/api/scan', async (req, res) => {
   if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
   
   try {
+    res.write('Scanning...\n');
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
     
     const results = { 
+      total: 0,
       files: [], duplicates: [], large: [], old: [], empty: [], 
       images: [], videos: [], documents: [], audios: [], archives: [],
       emails: [], promotions: [], social: [], spam: [],
       photos: [], shared: [], starred: [], folders: []
     };
     
-    // === DRIVE - ALL FILES (no limit) ===
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    let pageToken = null;
     let fileCount = 0;
-    let nextPageToken = null;
     
+    res.write('Scanning Drive files...\n');
     do {
       const response = await drive.files.list({
         pageSize: 100,
-        fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink,iconLink,webViewLink,shared,starred,parents)',
+        fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink,iconLink,webViewLink,shared,starred)',
         q: "trashed=false",
-        orderBy: 'modifiedTime desc',
-        pageToken: nextPageToken
+        pageToken: pageToken
       });
       
       const files = response.data.files || [];
@@ -167,16 +199,14 @@ app.post('/api/scan', async (req, res) => {
       
       results.files.push(...files);
       fileCount += files.length;
-      nextPageToken = response.data.nextPageToken;
-      
-      console.log('Scanned', fileCount, 'files...');
-    } while (nextPageToken);
-    
-    console.log('Total Drive files scanned:', results.files.length);
+      pageToken = response.data.nextPageToken;
+      res.write(`Loaded ${fileCount} files...\n`);
+    } while (pageToken);
     
     results.total = results.files.length;
+    res.write(`Total: ${results.total} files\n`);
     
-    // Analyze all files
+    // Categorize
     const nameCount = {};
     results.files.forEach(f => nameCount[f.name] = (nameCount[f.name] || 0) + 1);
     results.duplicates = results.files.filter(f => nameCount[f.name] > 1);
@@ -194,76 +224,63 @@ app.post('/api/scan', async (req, res) => {
     const oneYear = new Date(); oneYear.setFullYear(oneYear.getFullYear() - 1);
     results.old = results.files.filter(f => new Date(f.createdTime) < oneYear);
     
-    // === GMAIL - ALL EMAILS (unlimited) ===
+    res.write('Scanning Gmail...\n');
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    let emailCount = 0;
+    
+    // All emails
     let emailPage = null;
-    try {
-      do {
+    do {
+      try {
         const r = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: emailPage });
         const msgs = r.data.messages || [];
         if (!msgs.length) break;
         results.emails.push(...msgs);
-        emailCount += msgs.length;
         emailPage = r.data.nextPageToken;
-        console.log('Scanned', emailCount, 'emails...');
-      } while (emailPage);
-    } catch (e) { console.log('Gmail error:', e.message); }
+        if (results.emails.length % 1000 === 0) res.write(`${results.emails.length} emails...\n`);
+      } catch (e) { break; }
+    } while (emailPage);
     
+    // Promotions
     try {
-      let promoPage = null;
-      do {
-        const p = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: promoPage, q: 'category:promotions' });
-        if (!p.data.messages?.length) break;
-        results.promotions.push(...p.data.messages);
-        promoPage = p.data.nextPageToken;
-      } while (promoPage);
+      let p = await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:promotions' });
+      results.promotions = p.data.messages || [];
     } catch (e) {}
     
+    // Social
     try {
-      let socialPage = null;
-      do {
-        const s = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: socialPage, q: 'category:social' });
-        if (!s.data.messages?.length) break;
-        results.social.push(...s.data.messages);
-        socialPage = s.data.nextPageToken;
-      } while (socialPage);
+      let s = await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:social' });
+      results.social = s.data.messages || [];
     } catch (e) {}
     
+    // Spam
     try {
-      let spamPage = null;
-      do {
-        const sp = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: spamPage, q: 'category:spam' });
-        if (!sp.data.messages?.length) break;
-        results.spam.push(...sp.data.messages);
-        spamPage = sp.data.nextPageToken;
-      } while (spamPage);
+      let sp = await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:spam' });
+      results.spam = sp.data.messages || [];
     } catch (e) {}
     
-    // === GOOGLE PHOTOS (unlimited) ===
+    res.write('Scanning Google Photos...\n');
     try {
       const photos = google.photoslibrary({ version: 'v1', auth: oauth2Client });
       let photoPage = null;
-      let photoCount = 0;
       do {
         const p = await photos.mediaItems.list({ pageSize: 100, pageToken: photoPage });
         const items = p.data.mediaItems || [];
         if (!items.length) break;
         results.photos.push(...items);
-        photoCount += items.length;
         photoPage = p.data.nextPageToken;
-        console.log('Scanned', photoCount, 'photos...');
       } while (photoPage);
-    } catch (e) { console.log('Photos error:', e.message); }
+    } catch (e) { res.write('Photos error: ' + e.message + '\n'); }
     
-    console.log('SCAN COMPLETE - Files:', results.files.length, 'Emails:', results.emails.length, 'Photos:', results.photos.length);
+    res.write('Done!\n');
     res.json(results);
   } catch (err) {
+    console.error('Scan error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE
+// ==================== DELETE ====================
+
 app.post('/api/delete', async (req, res) => {
   if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
   const { fileIds } = req.body;
@@ -273,8 +290,15 @@ app.post('/api/delete', async (req, res) => {
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
-    for (const id of fileIds) await drive.files.delete({ fileId: id });
-    res.json({ deleted: fileIds.length });
+    
+    let deleted = 0;
+    for (const id of fileIds.slice(0, 100)) {
+      try {
+        await drive.files.delete({ fileId: id });
+        deleted++;
+      } catch (e) { console.log('Delete error:', e.message); }
+    }
+    res.json({ deleted, count: deleted });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -289,7 +313,12 @@ app.post('/api/trash', async (req, res) => {
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
-    for (const id of fileIds) await drive.files.update({ fileId: id, requestBody: { trashed: true } });
+    
+    for (const id of fileIds.slice(0, 100)) {
+      try {
+        await drive.files.update({ fileId: id, requestBody: { trashed: true } });
+      } catch (e) {}
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -298,6 +327,7 @@ app.post('/api/trash', async (req, res) => {
 
 app.post('/api/empty-trash', async (req, res) => {
   if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
+  
   try {
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
@@ -308,11 +338,14 @@ app.post('/api/empty-trash', async (req, res) => {
   }
 });
 
-// LOGOUT
+// ==================== LOGOUT ====================
+
 app.get('/api/logout', (req, res) => {
   req.session.destroy();
   res.json({ success: true });
 });
+
+// ==================== HOME ====================
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
