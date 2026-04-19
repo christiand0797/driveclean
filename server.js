@@ -20,7 +20,13 @@ app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// HEALTH CHECK - must be before static
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', users: users.size, host: req.get('host') });
+});
+
+app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html' }));
 
 function encrypt(text) {
   const CryptoJS = require('crypto-js');
@@ -332,21 +338,6 @@ app.post('/api/empty-trash', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// HEALTH CHECK
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', users: users.size, host: req.get('host') });
-});
-
-// DEBUG
-app.get('/api/debug', (req, res) => {
-  res.json({
-    cookies: req.headers.cookie,
-    host: req.get('host'),
-    origin: req.get('origin'),
-    referer: req.get('referer')
-  });
 });
 
 // HOME
