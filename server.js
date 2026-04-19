@@ -77,56 +77,7 @@ app.get('/api/auth/url', (req, res) => {
   res.json({ url });
 });
 
-// AUTH CALLBACK - popup flow with postMessage
-app.get('/api/auth/callback', async (req, res) => {
-  const { code, error } = req.query;
-  
-  console.log('=== AUTH CALLBACK ===');
-  console.log('code:', !!code, 'error:', error);
-  
-  if (error) return res.send(`<script>opener.postMessage({error:'${error}'},'*');close();</script>`);
-  if (!code) return res.send(`<script>opener.postMessage({error:'no_code'},'*');close();</script>`);
-  
-  try {
-    const oauth2Client = createOAuth2Client();
-    const { tokens } = await oauth2Client.getToken(code);
-    console.log('Got tokens:', !!tokens);
-    
-    oauth2Client.setCredentials(tokens);
-    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
-    
-    let user;
-    try {
-      user = await oauth2.userinfo.get();
-    } catch (err) {
-      console.error('User info error:', err);
-      return res.send(`<script>opener.postMessage({error:'user_info_failed'},'*');close();</script>`);
-    }
-    
-    console.log('User data:', user?.data?.email);
-    if (!user?.data) return res.send(`<script>opener.postMessage({error:'no_user'},'*');close();</script>`);
-    
-    const authToken = createToken();
-    console.log('Created token:', authToken.substring(0, 8) + '...');
-    
-    users.set(authToken, {
-      tokens: encrypt(JSON.stringify(tokens)),
-      email: user.data.email,
-      name: user.data.name,
-      picture: user.data.picture,
-      createdAt: Date.now()
-    });
-    
-    // Send token to opener
-    res.send(`<script>opener.postMessage({token:'${authToken}'},'*');close();</script>`);
-  } catch (err) {
-    console.error('Auth error:', err.message);
-    res.send(`<script>opener.postMessage({error:'${err.message}'},'*');close();</script>`);
-  }
-});
-  
-  res.json({ url, token });
-});
+
 
 // AUTH CALLBACK
 app.get('/api/auth/callback', async (req, res) => {

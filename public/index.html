@@ -175,27 +175,8 @@
       const res = await fetch('/api/auth/url', { credentials: 'include' });
       const { url } = await res.json();
       
-      // Open in popup
-      const width = 500, height = 600;
-      const left = (screen.width - width) / 2;
-      const top = (screen.height - height) / 2;
-      const win = window.open(url, 'oauth', `width=${width},height=${height},left=${left},top=${top}`);
-      
-      // Listen for message from callback
-      function handleMessage(e) {
-        console.log('Got message:', e.data);
-        if (e.data.token) {
-          window.localStorage.setItem('driveclean_token', e.data.token);
-          window.removeEventListener('message', handleMessage);
-          if (win) win.close();
-          checkUser();
-        } else if (e.data.error) {
-          showToast('Auth error: ' + e.data.error, 'error');
-          window.removeEventListener('message', handleMessage);
-          if (win) win.close();
-        }
-      }
-      window.addEventListener('message', handleMessage);
+      // Redirect entire page for auth
+      window.location.href = url;
     }
     
     async function checkUser() {
