@@ -214,21 +214,27 @@ app.post('/api/scan', requireAuth, async (req, res) => {
       photos: []
     };
     
-    // DRIVE FILES
+    // DRIVE FILES - get ALL files not in trash
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     let pageToken = null;
+    let fileCount = 0;
     
     do {
       const response = await drive.files.list({
-        pageSize: 100,
+        pageSize: 1000,
         fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink,iconLink,webViewLink,shared,starred)',
+        q: "trashed=false",
         pageToken: pageToken
       });
       const files = response.data.files || [];
       if (!files.length) break;
       results.files.push(...files);
+      fileCount += files.length;
       pageToken = response.data.nextPageToken;
+      console.log('Loaded ' + fileCount + ' files...');
     } while (pageToken);
+    
+    console.log('Total Drive files: ' + results.files.length);
     
     results.total = results.files.length;
     
@@ -245,32 +251,39 @@ app.post('/api/scan', requireAuth, async (req, res) => {
     const oneYear = new Date(); oneYear.setFullYear(oneYear.getFullYear() - 1);
     results.old = results.files.filter(f => new Date(f.createdTime) < oneYear);
     
-    // GMAIL
+    // GMAIL - get all emails
     try {
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
       
       let emailPage = null;
+      let emailCount = 0;
       do {
-        const r = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: emailPage });
+        const r = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: emailPage, q: '-in:trash' });
         if (!r.data.messages?.length) break;
         results.emails.push(...r.data.messages);
+        emailCount += r.data.messages.length;
         emailPage = r.data.nextPageToken;
       } while (emailPage);
       
-      results.promotions = (await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:promotions' })).data.messages || [];
-      results.spam = (await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:spam' })).data.messages || [];
+      console.log('Total emails: ' + emailCount);
+      
+      results.promotions = (await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:promotions -in:trash' })).data.messages || [];
+      results.spam = (await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:spam -in:trash' })).data.messages || [];
     } catch (e) { console.log('Gmail error:', e.message); }
     
-    // PHOTOS
+    // GOOGLE PHOTOS - get all media
     try {
       const photos = google.photoslibrary({ version: 'v1', auth: oauth2Client });
       let photoPage = null;
+      let photoCount = 0;
       do {
         const p = await photos.mediaItems.list({ pageSize: 100, pageToken: photoPage });
         if (!p.data.mediaItems?.length) break;
         results.photos.push(...p.data.mediaItems);
+        photoCount += p.data.mediaItems.length;
         photoPage = p.data.nextPageToken;
       } while (photoPage);
+      console.log('Total Photos: ' + photoCount);
     } catch (e) { console.log('Photos error:', e.message); }
     
     res.json(results);
