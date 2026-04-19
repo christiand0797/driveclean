@@ -174,29 +174,52 @@
     async function login() {
       const res = await fetch('/api/auth/url', { credentials: 'include' });
       const { url } = await res.json();
-      window.location.href = url;
+      
+      // Open OAuth in popup
+      const width = 500, height = 600;
+      const left = (screen.width - width) / 2;
+      const top = (screen.height - height) / 2;
+      const win = window.open(url, 'google-auth', `width=${width},height=${height},left=${left},top=${top}`);
+      
+      // Listen for response
+      window.addEventListener('message', function listener(e) {
+        console.log('Got message:', e.data);
+        if (e.data.token) {
+          // Store token and refresh
+          window.localStorage.setItem('driveclean_token', e.data.token);
+          window.removeEventListener('message', listener);
+          win.close();
+          checkUser();
+        } else if (e.data.error) {
+          showToast('Auth error: ' + e.data.error, 'error');
+          window.removeEventListener('message', listener);
+          win.close();
+        }
+      });
     }
     
     async function checkUser() {
+      // Check localStorage first
+      let token = window.localStorage.getItem('driveclean_token');
       const params = new URLSearchParams(window.location.search);
+      
       if (params.get('error')) {
         showToast(params.get('error'), 'error');
         window.history.replaceState({}, '', '/');
       }
       
-      // If token in URL, it will be processed and stored as cookie by /api/user
-      // Clean URL after check
-      const hasToken = params.has('t');
-      
-      console.log('Checking user...');
-      const res = await fetch('/api/user' + (hasToken ? '?t=' + params.get('t') : ''), { credentials: 'include' });
-      const data = await res.json();
-      console.log('User data:', data);
-      
-      // Clean URL after processing token
-      if (hasToken) {
+      // If token in URL, save to localStorage
+      if (params.has('t')) {
+        token = params.get('t');
+        window.localStorage.setItem('driveclean_token', token);
         window.history.replaceState({}, '', '/');
       }
+      
+      console.log('Checking user with token:', token ? token.substring(0, 8) + '...' : 'none');
+      
+      const res = await fetch('/api/user' + (token ? '?t=' + token : ''), { credentials: 'include' });
+      const data = await res.json();
+      console.log('User data:', data);
       
       if (data.loggedIn) {
         document.getElementById('loginSection').style.display = 'none';
@@ -205,6 +228,9 @@
         document.getElementById('userInfo').innerHTML += `<span style="color:#888;font-size:0.85rem">${data.user.email}</span>`;
         loadStorage();
         scan();
+      } else {
+        // Clear invalid token
+        window.localStorage.removeItem('driveclean_token');
       }
     }
     
@@ -365,6 +391,7 @@
     }
     
     async function logout() {
+      window.localStorage.removeItem('driveclean_token');
       await fetch('/api/logout');
       window.location.reload();
     }

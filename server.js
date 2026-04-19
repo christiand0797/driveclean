@@ -52,14 +52,9 @@ function createOAuth2Client() {
   );
 }
 
-// AUTH URL
+// AUTH URL - returns OAuth URL
 app.get('/api/auth/url', (req, res) => {
   const oauth2Client = createOAuth2Client();
-  const token = createToken();
-  
-  // Store pending token
-  req.session = req.session || {};
-  req.session.pendingToken = token;
   
   const scopes = [
     'https://www.googleapis.com/auth/drive',
@@ -76,9 +71,65 @@ app.get('/api/auth/url', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: scopes,
-    prompt: 'consent',
-    state: token
+    prompt: 'consent'
   });
+  
+  res.json({ url });
+});
+
+// AUTH CALLBACK - returns simple HTML that sends token to opener
+app.get('/api/auth/callback', async (req, res) => {
+  const { code, error } = req.query;
+  
+  console.log('=== AUTH CALLBACK ===');
+  console.log('code:', !!code, 'error:', error);
+  
+  if (error) {
+    return res.send(`<script>window.opener.postMessage({error:'${error}'},'*');window.close();</script>`);
+  }
+  if (!code) {
+    return res.send(`<script>window.opener.postMessage({error:'no_code'},'*');window.close();</script>`);
+  }
+  
+  try {
+    const oauth2Client = createOAuth2Client();
+    const { tokens } = await oauth2Client.getToken(code);
+    console.log('Got tokens:', !!tokens);
+    
+    oauth2Client.setCredentials(tokens);
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    
+    let user;
+    try {
+      user = await oauth2.userinfo.get();
+    } catch (err) {
+      console.error('User info error:', err);
+      return res.send(`<script>window.opener.postMessage({error:'user_info_failed'},'*');window.close();</script>`);
+    }
+    
+    console.log('User data:', user?.data?.email);
+    if (!user?.data) {
+      return res.send(`<script>window.opener.postMessage({error:'no_user'},'*');window.close();</script>`);
+    }
+    
+    const authToken = createToken();
+    console.log('Created token:', authToken.substring(0, 8) + '...');
+    
+    users.set(authToken, {
+      tokens: encrypt(JSON.stringify(tokens)),
+      email: user.data.email,
+      name: user.data.name,
+      picture: user.data.picture,
+      createdAt: Date.now()
+    });
+    
+    // Send token back to opener window
+    res.send(`<script>window.opener.postMessage({token:'${authToken}',user:${JSON.stringify(user.data)}},'*');window.close();</script>`);
+  } catch (err) {
+    console.error('Auth error:', err.message);
+    res.send(`<script>window.opener.postMessage({error:'${err.message}'},'*');window.close();</script>`);
+  }
+});
   
   res.json({ url, token });
 });
