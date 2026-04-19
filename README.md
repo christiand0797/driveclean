@@ -15,6 +15,7 @@ The ultimate Google Drive, Photos & Gmail cleanup tool.
 - **One-Click Actions** - Select multiple files, delete or move to trash
 - **Progress Tracking** - Real-time scan progress
 - **Storage Overview** - See your total storage usage
+- **Token-Based Auth** - Secure in-memory token storage (no sessions)
 
 ## Quick Start
 
@@ -44,12 +45,19 @@ git push origin master
 # 6. Deploy!
 ```
 
+## Troubleshooting
+
+### Login loops back to homepage after Google auth
+1. Check browser console for errors
+2. Verify environment variables are set in Render dashboard
+3. Check Render logs for error messages: `render.com → Your App → Logs`
+
 ## Tech Stack
 
 - Node.js + Express
 - Google APIs (Drive, Photos, Gmail)
 - OAuth 2.0
-- Session encryption
+- Token-based authentication with AES encryption
 
 ## License
 
