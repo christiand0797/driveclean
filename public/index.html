@@ -85,23 +85,30 @@
       </div>
       
       <div class="stats-grid">
-        <div class="stat-card" onclick="showTab('files')"><h3 id="totalFiles">0</h3><p>Total Files</p></div>
+        <div class="stat-card" onclick="showTab('files')"><h3 id="totalFiles">0</h3><p>Drive Files</p></div>
+        <div class="stat-card" onclick="showTab('photos')"><h3 id="photoCount">0</h3><p>Google Photos</p></div>
+        <div class="stat-card" onclick="showTab('emails')"><h3 id="emailCount">0</h3><p>Gmail</p></div>
         <div class="stat-card" onclick="showTab('duplicates')"><h3 class="warning" id="duplicateCount">0</h3><p>Duplicates</p></div>
         <div class="stat-card" onclick="showTab('large')"><h3 id="largeCount">0</h3><p>Large (100MB+)</p></div>
         <div class="stat-card" onclick="showTab('old')"><h3 id="oldCount">0</h3><p>Old (1 yr+)</p></div>
         <div class="stat-card" onclick="showTab('images')"><h3 id="imageCount">0</h3><p>Images</p></div>
         <div class="stat-card" onclick="showTab('videos')"><h3 id="videoCount">0</h3><p>Videos</p></div>
-        <div class="stat-card" onclick="showTab('emails')"><h3 id="emailCount">0</h3><p>Emails</p></div>
+        <div class="stat-card" onclick="showTab('promotions')"><h3 class="warning" id="promoCount">0</h3><p>Promotions</p></div>
+        <div class="stat-card" onclick="showTab('spam')"><h3 class="warning" id="spamCount">0</h3><p>Spam</p></div>
       </div>
       
       <div class="tabs">
-        <button class="tab active" onclick="showTab('files')">All Files</button>
+        <button class="tab active" onclick="showTab('files')">Drive</button>
+        <button class="tab" onclick="showTab('photos')">Photos</button>
+        <button class="tab" onclick="showTab('emails')">Gmail</button>
         <button class="tab" onclick="showTab('duplicates')">Duplicates</button>
         <button class="tab" onclick="showTab('large')">Large</button>
         <button class="tab" onclick="showTab('old')">Old</button>
         <button class="tab" onclick="showTab('images')">Images</button>
         <button class="tab" onclick="showTab('videos')">Videos</button>
-        <button class="tab" onclick="showTab('emails')">Emails</button>
+        <button class="tab" onclick="showTab('empty')">Empty</button>
+        <button class="tab" onclick="showTab('promotions')">Promotions</button>
+        <button class="tab" onclick="showTab('spam')">Spam</button>
       </div>
       
       <div class="actions-bar">
@@ -111,12 +118,16 @@
       </div>
       
       <div class="section active" id="files"><div class="file-grid" id="fileGrid"></div></div>
+      <div class="section" id="photos"><div class="file-grid" id="photoGrid"></div></div>
+      <div class="section" id="emails"><div class="file-grid" id="emailGrid"></div></div>
       <div class="section" id="duplicates"><div class="file-grid" id="duplicateGrid"></div></div>
       <div class="section" id="large"><div class="file-grid" id="largeGrid"></div></div>
       <div class="section" id="old"><div class="file-grid" id="oldGrid"></div></div>
       <div class="section" id="images"><div class="file-grid" id="imageGrid"></div></div>
       <div class="section" id="videos"><div class="file-grid" id="videoGrid"></div></div>
-      <div class="section" id="emails"><div class="file-grid" id="emailGrid"></div></div>
+      <div class="section" id="empty"><div class="file-grid" id="emptyGrid"></div></div>
+      <div class="section" id="promotions"><div class="file-grid" id="promoGrid"></div></div>
+      <div class="section" id="spam"><div class="file-grid" id="spamGrid"></div></div>
     </div>
     
     <div class="toast" id="toast"></div>
@@ -127,13 +138,24 @@
     let selectedFiles = new Set();
     let currentTab = 'files';
     
-    function getIcon(mimeType) {
+    function getIcon(mimeType, f) {
+      // Use actual thumbnail if available
+      if (f.thumbnailLink) return `<img src="${f.thumbnailLink}=w400-h400" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
+      if (f.iconLink) return `<img src="${f.iconLink}" style="object-fit:contain;padding:20px;" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
+      return getEmoji(mimeType);
+    }
+    
+    function getEmoji(mimeType) {
       if (mimeType?.includes('image')) return '🖼️';
       if (mimeType?.includes('video')) return '🎬';
       if (mimeType?.includes('audio')) return '🎵';
       if (mimeType?.includes('document') || mimeType?.includes('sheet')) return '📄';
+      if (mimeType?.includes('presentation')) return '📽️';
       if (mimeType?.includes('folder')) return '📁';
-      if (mimeType?.includes('zip') || mimeType?.includes('rar')) return '📦';
+      if (mimeType?.includes('zip') || mimeType?.includes('rar') || mimeType?.includes('7z')) return '📦';
+      if (mimeType?.includes('pdf')) return '📕';
+      if (mimeType?.includes('spreadsheet')) return '📊';
+      if (mimeType?.includes('.google-apps')) return '📌';
       return '📎';
     }
     
@@ -179,34 +201,62 @@
     }
     
     function updateStats() {
-      document.getElementById('totalFiles').textContent = scanData.total || 0;
-      document.getElementById('duplicateCount').textContent = (scanData.duplicates || []).length;
-      document.getElementById('largeCount').textContent = (scanData.large || []).length;
-      document.getElementById('oldCount').textContent = (scanData.old || []).length;
-      document.getElementById('imageCount').textContent = (scanData.images || []).length;
-      document.getElementById('videoCount').textContent = (scanData.videos || []).length;
-      document.getElementById('emailCount').textContent = scanData.emails || 0;
+      document.getElementById('totalFiles').textContent = (scanData.total || 0).toLocaleString();
+      document.getElementById('photoCount').textContent = (scanData.photos || []).length.toLocaleString();
+      document.getElementById('emailCount').textContent = (scanData.emails || []).length.toLocaleString();
+      document.getElementById('duplicateCount').textContent = (scanData.duplicates || []).length.toLocaleString();
+      document.getElementById('largeCount').textContent = (scanData.large || []).length.toLocaleString();
+      document.getElementById('oldCount').textContent = (scanData.old || []).length.toLocaleString();
+      document.getElementById('imageCount').textContent = (scanData.images || []).length.toLocaleString();
+      document.getElementById('videoCount').textContent = (scanData.videos || []).length.toLocaleString();
+      document.getElementById('promoCount').textContent = (scanData.promotions || []).length.toLocaleString();
+      document.getElementById('spamCount').textContent = (scanData.spam || []).length.toLocaleString();
     }
     
     function renderAll() {
-      renderGrid('fileGrid', scanData.files || []);
-      renderGrid('duplicateGrid', scanData.duplicates || []);
-      renderGrid('largeGrid', scanData.large || []);
-      renderGrid('oldGrid', scanData.old || []);
-      renderGrid('imageGrid', scanData.images || []);
-      renderGrid('videoGrid', scanData.videos || []);
+      renderGrid('fileGrid', (scanData.files || []).slice(0, 200));
+      renderGrid('photoGrid', (scanData.photos || []).slice(0, 200));
+      renderGrid('emailGrid', (scanData.emails || []).slice(0, 200));
+      renderGrid('duplicateGrid', (scanData.duplicates || []).slice(0, 200));
+      renderGrid('largeGrid', (scanData.large || []).slice(0, 200));
+      renderGrid('oldGrid', (scanData.old || []).slice(0, 200));
+      renderGrid('imageGrid', (scanData.images || []).slice(0, 200));
+      renderGrid('videoGrid', (scanData.videos || []).slice(0, 200));
+      renderGrid('emptyGrid', (scanData.empty || []).slice(0, 200));
+      renderGrid('promoGrid', (scanData.promotions || []).slice(0, 200));
+      renderGrid('spamGrid', (scanData.spam || []).slice(0, 200));
     }
     
-    function renderGrid(id, files) {
+    function renderGrid(id, items) {
       const container = document.getElementById(id);
-      if (!files?.length) {
-        container.innerHTML = '<div class="empty">No files</div>';
+      if (!items?.length) {
+        container.innerHTML = '<div class="empty">No items</div>';
         return;
       }
-      container.innerHTML = files.slice(0, 50).map(f => {
-        const thumb = f.thumbnailLink ? `<img src="${f.thumbnailLink}=w300-h300" onerror="this.style.display='none';this.parentElement.innerHTML='${getIcon(f.mimeType)}'">` : getIcon(f.mimeType);
-        const sel = selectedFiles.has(f.id) ? 'style="border:2px solid #00d4ff"' : '';
-        return `<div class="file-card" onclick="toggle('${f.id}')" ${sel}><div class="thumbnail">${thumb}</div><div class="file-info"><div class="file-name">${f.name}</div><div class="file-meta">${f(f.size)}</div></div></div>`;
+      container.innerHTML = items.slice(0, 100).map(item => {
+        // Handle different item types (Drive files, Gmail, Photos)
+        const id = item.id;
+        const name = item.name || item.snippet || item.filename || item.baseUrl || 'Untitled';
+        const size = item.size || item.payload?.filename?.length || 0;
+        const mimeType = item.mimeType || item.mediaMetadata?.mimeType || 'application/octet-stream';
+        const createdTime = item.createdTime || item.internalDate;
+        const date = createdTime ? new Date(parseInt(createdTime)).toLocaleDateString() : '';
+        
+        const sel = selectedFiles.has(id) ? 'style="border:2px solid #00d4ff"' : '';
+        let thumb = '';
+        
+        // Use baseUrl for Google Photos (actual image URLs)
+        if (item.baseUrl) {
+          thumb = `<img src="${item.baseUrl}=w400-h400" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
+        } else if (item.thumbnailLink) {
+          thumb = `<img src="${item.thumbnailLink}=w400-h400" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
+        } else if (item.iconLink) {
+          thumb = `<img src="${item.iconLink}" style="object-fit:contain;padding:25px;width:100%;height:100%" onerror="this.style.display='none';this.parentElement.innerHTML='${getEmoji(mimeType)}'">`;
+        } else {
+          thumb = `<span class="icon">${getEmoji(mimeType)}</span>`;
+        }
+        
+        return `<div class="file-card" onclick="toggle('${id}')" ${sel}><div class="thumbnail">${thumb}</div><div class="file-info"><div class="file-name" title="${name}">${name}</div><div class="file-meta">${f(size)} ${date ? '•' + date : ''}</div></div></div>`;
       }).join('');
     }
     
@@ -230,8 +280,9 @@
       currentTab = tab;
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-      document.querySelectorAll('.tab')[['files','duplicates','large','old','images','videos','emails'].indexOf(tab)].classList.add('active');
-      document.getElementById(tab).classList.add('active');
+      const tabs = ['files','photos','emails','duplicates','large','old','images','videos','empty','promotions','spam'];
+      document.querySelectorAll('.tab')[tabs.indexOf(tab)]?.classList.add('active');
+      document.getElementById(tab)?.classList.add('active');
     }
     
     function showToast(msg, type='success') {

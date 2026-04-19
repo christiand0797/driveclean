@@ -62,6 +62,8 @@ app.get('/api/auth/url', (req, res) => {
     'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/drive.metadata.readonly',
     'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/drive.photos.readonly',
+    'https://www.googleapis.com/auth/photoslibrary.readonly',
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.modify',
     'https://www.googleapis.com/auth/userinfo.profile',
@@ -131,7 +133,7 @@ app.get('/api/storage', async (req, res) => {
   }
 });
 
-// SCAN
+// SCAN - ALL FILES
 app.post('/api/scan', async (req, res) => {
   if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
   
@@ -139,40 +141,86 @@ app.post('/api/scan', async (req, res) => {
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
     
-    const results = { files: [], duplicates: [], large: [], old: [], empty: [], images: [], videos: [], documents: [] };
-    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    const results = { 
+      files: [], duplicates: [], large: [], old: [], empty: [], 
+      images: [], videos: [], documents: [], audios: [], archives: [],
+      emails: [], promotions: [], social: [], spam: [],
+      photos: [], shared: [], starred: [], folders: []
+    };
     
+    // === DRIVE - ALL FILES ===
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
     let pageToken;
+    let fileCount = 0;
     do {
       const response = await drive.files.list({
         pageSize: 100,
-        fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink)',
-        q: "trashed=false"
+        fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink,iconLink,webViewLink,shared,starred,parents)',
+        q: "trashed=false",
+        orderBy: 'modifiedTime desc'
       });
-      results.files.push(...(response.data.files || []));
+      const files = response.data.files || [];
+      results.files.push(...files);
+      fileCount += files.length;
       pageToken = response.data.nextPageToken;
-    } while (pageToken);
+    } while (pageToken && fileCount < 5000);
     
     results.total = results.files.length;
     
+    // Analyze all files
     const nameCount = {};
     results.files.forEach(f => nameCount[f.name] = (nameCount[f.name] || 0) + 1);
-    results.files.filter(f => nameCount[f.name] > 1).forEach(f => results.duplicates.push(f));
-    results.files.filter(f => parseInt(f.size || 0) > 100 * 1024 * 1024).forEach(f => results.large.push(f));
-    results.files.filter(f => parseInt(f.size || 0) === 0).forEach(f => results.empty.push(f));
-    results.files.filter(f => f.mimeType?.includes('image')).forEach(f => results.images.push(f));
-    results.files.filter(f => f.mimeType?.includes('video')).forEach(f => results.videos.push(f));
-    results.files.filter(f => f.mimeType?.includes('document') || f.mimeType?.includes('sheet')).forEach(f => results.documents.push(f));
+    results.duplicates = results.files.filter(f => nameCount[f.name] > 1);
+    results.large = results.files.filter(f => parseInt(f.size || 0) > 100 * 1024 * 1024);
+    results.empty = results.files.filter(f => parseInt(f.size || 0) === 0 && !f.mimeType?.includes('folder'));
+    results.images = results.files.filter(f => f.mimeType?.includes('image'));
+    results.videos = results.files.filter(f => f.mimeType?.includes('video'));
+    results.audios = results.files.filter(f => f.mimeType?.includes('audio'));
+    results.documents = results.files.filter(f => f.mimeType?.includes('document') || f.mimeType?.includes('sheet') || f.mimeType?.includes('presentation'));
+    results.archives = results.files.filter(f => f.mimeType?.includes('zip') || f.mimeType?.includes('rar') || f.mimeType?.includes('tar'));
+    results.shared = results.files.filter(f => f.shared);
+    results.starred = results.files.filter(f => f.starred);
+    results.folders = results.files.filter(f => f.mimeType?.includes('folder'));
     
-    const oneYear = new Date();
-    oneYear.setFullYear(oneYear.getFullYear() - 1);
-    results.files.filter(f => new Date(f.createdTime) < oneYear).forEach(f => results.old.push(f));
+    const oneYear = new Date(); oneYear.setFullYear(oneYear.getFullYear() - 1);
+    results.old = results.files.filter(f => new Date(f.createdTime) < oneYear);
     
+    // === GMAIL - ALL EMAILS ===
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
     try {
-      const r = await gmail.users.messages.list({ userId: 'me', maxResults: 1 });
-      results.emails = r.data.resultSizeEstimate || 0;
-    } catch (e) { results.emails = 0; }
+      let emailToken;
+      do {
+        const r = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: emailToken });
+        results.emails.push(...(r.data.messages || []));
+        emailToken = r.data.nextPageToken;
+      } while (emailToken && results.emails.length < 5000);
+    } catch (e) { console.log('Gmail error:', e.message); }
+    
+    try {
+      const promo = await gmail.users.messages.list({ userId: 'me', maxResults: 200, q: 'category:promotions' });
+      results.promotions = promo.data.messages || [];
+    } catch (e) {}
+    
+    try {
+      const social = await gmail.users.messages.list({ userId: 'me', maxResults: 200, q: 'category:social' });
+      results.social = social.data.messages || [];
+    } catch (e) {}
+    
+    try {
+      const spam = await gmail.users.messages.list({ userId: 'me', maxResults: 200, q: 'category:spam' });
+      results.spam = spam.data.messages || [];
+    } catch (e) {}
+    
+    // === GOOGLE PHOTOS ===
+    try {
+      const photos = google.photoslibrary({ version: 'v1', auth: oauth2Client });
+      let photoToken;
+      do {
+        const p = await photos.mediaItems.list({ pageSize: 100, pageToken: photoToken });
+        results.photos.push(...(p.data.mediaItems || []));
+        photoToken = p.data.nextPageToken;
+      } while (photoToken && results.photos.length < 5000);
+    } catch (e) { console.log('Photos error:', e.message); }
     
     res.json(results);
   } catch (err) {
