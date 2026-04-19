@@ -350,6 +350,64 @@ app.post('/api/empty-trash', async (req, res) => {
   }
 });
 
+// ==================== RENAME ====================
+
+app.post('/api/rename', async (req, res) => {
+  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
+  const { fileId, newName } = req.body;
+  if (!fileId || !newName) return res.status(400).json({ error: 'Missing fileId or newName' });
+  
+  try {
+    const oauth2Client = createOAuth2Client();
+    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
+    await google.drive({ version: 'v3', auth: oauth2Client }).files.update({
+      fileId,
+      requestBody: { name: newName }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== FILE INFO ====================
+
+app.get('/api/file/:fileId', async (req, res) => {
+  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
+  
+  try {
+    const oauth2Client = createOAuth2Client();
+    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
+    const file = await google.drive({ version: 'v3', auth: oauth2Client }).files.get({
+      fileId: req.params.fileId,
+      fields: 'id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink,webViewLink,description,owners,shared'
+    });
+    res.json(file.data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== COPY FILE ====================
+
+app.post('/api/copy', async (req, res) => {
+  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
+  const { fileId, newName } = req.body;
+  if (!fileId) return res.status(400).json({ error: 'Missing fileId' });
+  
+  try {
+    const oauth2Client = createOAuth2Client();
+    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
+    const file = await google.drive({ version: 'v3', auth: oauth2Client }).files.copy({
+      fileId,
+      requestBody: { name: newName || undefined }
+    });
+    res.json(file.data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==================== LOGOUT ====================
 
 app.get('/api/logout', (req, res) => {
@@ -361,6 +419,22 @@ app.get('/api/logout', (req, res) => {
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Health check for Render
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Status endpoint
+app.get('/api/status', (req, res) => {
+  res.json({ 
+    status: 'running',
+    sessionId: req.sessionID,
+    hasSession: !!req.session.tokens,
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
 });
 
 app.listen(PORT, () => {
