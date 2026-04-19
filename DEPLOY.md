@@ -45,7 +45,13 @@ Enable "Auto-Deploy" in Render settings to deploy automatically on GitHub push.
 
 ## Troubleshooting
 
-### Session issues
+### Login loops back to homepage after Google auth
+- Check browser console for JavaScript errors
+- Verify environment variables in Render dashboard
+- Check Render logs: App → Logs
+- Clear browser cookies and retry
+
+### Session/Token issues
 - Clear browser cookies
 - Make sure REDIRECT_URI matches exactly
 
