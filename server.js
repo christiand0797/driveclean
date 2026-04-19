@@ -2,11 +2,14 @@ require('dotenv').config();
 const express = require('express');
 
 // Suppress MemoryStore warning in production
-const original warn = console.warn;
+const originalWarn = console.warn;
 console.warn = (...args) => {
   if (args[0]?.includes?.('MemoryStore')) return;
-  original.apply(console, args);
+  originalWarn.apply(console, args);
 };
+
+// Trust proxy for production
+app.set('trust proxy', 1);
 const session = require('express-session');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -45,9 +48,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: { 
-    httpOnly: true,
-    secure: false,
     maxAge: 24 * 60 * 60 * 1000,
+    httpOnly: false,
     sameSite: 'lax'
   }
 }));
@@ -149,7 +151,18 @@ app.get('/api/debug', (req, res) => {
     sessionId: req.sessionID,
     hasTokens: !!req.session.tokens,
     cookie: req.headers.cookie,
-    userAgent: req.headers['user-agent']
+    userAgent: req.headers['user-agent'],
+    domain: req.get('host'),
+    protocol: req.protocol
+  });
+});
+
+// Force session save test
+app.get('/api/session-test', (req, res) => {
+  req.session.test = 'hello';
+  req.session.save((err) => {
+    if (err) return res.json({ error: err.message });
+    res.json({ sessionId: req.sessionID, saved: true, test: req.session.test });
   });
 });
 
