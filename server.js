@@ -132,8 +132,8 @@ app.get('/api/auth/callback', async (req, res) => {
     
     console.log('Logged in:', user.data.email);
     
-    // Redirect to home with token - client will handle storing it
-    res.redirect('/?login=success&token=' + authToken);
+    // Return HTML that sends token via postMessage and closes window
+    res.send('<!DOCTYPE html><html><body><script>window.opener.postMessage({type:"driveclean-auth",token:"' + authToken + '",user:' + JSON.stringify(user.data) + '},"*");window.close();</script></body></html>');
     
   } catch (err) {
     console.error('Auth error:', err.message);

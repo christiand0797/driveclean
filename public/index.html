@@ -176,7 +176,12 @@
       const res = await fetch('/api/auth/url');
       const data = await res.json();
       if (data.error) return showToast(data.error, 'error');
-      window.location.href = data.url;
+      
+      // Open OAuth in popup
+      const width = 500, height = 600;
+      const left = (screen.width - width) / 2;
+      const top = (screen.height - height) / 2;
+      window.open(data.url, 'oauth', 'width=' + width + ',height=' + height + ',left=' + left + ',top=' + top);
     }
     
     async function checkUser() {
@@ -394,6 +399,16 @@
       localStorage.removeItem('driveclean_token');
       window.location.reload();
     }
+    
+    // Listen for postMessage from auth callback
+    window.addEventListener('message', function(e) {
+      if (e.data && e.data.type === 'driveclean-auth') {
+        token = e.data.token;
+        localStorage.setItem('driveclean_token', token);
+        showToast('Logged in!', 'success');
+        checkUser();
+      }
+    });
     
     // Init
     checkUser();
