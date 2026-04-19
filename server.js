@@ -81,12 +81,16 @@ app.get('/api/auth/url', (req, res) => {
 app.get('/api/auth/callback', async (req, res) => {
   const { code, state: token, error } = req.query;
   
+  console.log('=== AUTH CALLBACK ===');
+  console.log('code:', !!code, 'state:', token, 'error:', error);
+  
   if (error) return res.redirect('/?error=' + encodeURIComponent(error));
   if (!code) return res.redirect('/?error=no_code');
   
   try {
     const oauth2Client = createOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
+    console.log('Got tokens:', !!tokens);
     
     // Get user info
     oauth2Client.setCredentials(tokens);
@@ -100,10 +104,11 @@ app.get('/api/auth/callback', async (req, res) => {
       return res.redirect('/?error=user_info_failed');
     }
     
+    console.log('User data:', user?.data?.email);
     if (!user?.data) return res.redirect('/?error=user_info_failed');
     
-    const userId = user.data.email;
     const authToken = createToken();
+    console.log('Created token:', authToken.substring(0, 8) + '...');
     
     users.set(authToken, {
       tokens: encrypt(JSON.stringify(tokens)),
@@ -113,15 +118,14 @@ app.get('/api/auth/callback', async (req, res) => {
       createdAt: Date.now()
     });
     
-    res.cookie('driveclean_token', authToken, {
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      httpOnly: true,
-      sameSite: 'lax'
-    });
+    // Set cookie using manual header for better compatibility
+    const cookieValue = 'driveclean_token=' + authToken + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + (30 * 24 * 60 * 60);
+    res.setHeader('Set-Cookie', cookieValue);
+    console.log('Cookie set');
     
     res.redirect('/');
   } catch (err) {
-    console.error('Auth error:', err.message);
+    console.error('Auth error:', err.message, err.stack);
     res.redirect('/?error=auth_failed');
   }
 });
