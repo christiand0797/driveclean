@@ -175,27 +175,27 @@
       const res = await fetch('/api/auth/url', { credentials: 'include' });
       const { url } = await res.json();
       
-      // Open OAuth in popup
+      // Open in popup
       const width = 500, height = 600;
       const left = (screen.width - width) / 2;
       const top = (screen.height - height) / 2;
-      const win = window.open(url, 'google-auth', `width=${width},height=${height},left=${left},top=${top}`);
+      const win = window.open(url, 'oauth', `width=${width},height=${height},left=${left},top=${top}`);
       
-      // Listen for response
-      window.addEventListener('message', function listener(e) {
+      // Listen for message from callback
+      function handleMessage(e) {
         console.log('Got message:', e.data);
         if (e.data.token) {
-          // Store token and refresh
           window.localStorage.setItem('driveclean_token', e.data.token);
-          window.removeEventListener('message', listener);
-          win.close();
+          window.removeEventListener('message', handleMessage);
+          if (win) win.close();
           checkUser();
         } else if (e.data.error) {
           showToast('Auth error: ' + e.data.error, 'error');
-          window.removeEventListener('message', listener);
-          win.close();
+          window.removeEventListener('message', handleMessage);
+          if (win) win.close();
         }
-      });
+      }
+      window.addEventListener('message', handleMessage);
     }
     
     async function checkUser() {
@@ -208,11 +208,12 @@
         window.history.replaceState({}, '', '/');
       }
       
-      // If token in URL, save to localStorage
-      if (params.has('t')) {
-        token = params.get('t');
+      // Check hash for token
+      if (window.location.hash && window.location.hash.startsWith('#token=')) {
+        token = window.location.hash.substring(7);
         window.localStorage.setItem('driveclean_token', token);
-        window.history.replaceState({}, '', '/');
+        window.location.hash = '';
+        showToast('Logged in!', 'success');
       }
       
       console.log('Checking user with token:', token ? token.substring(0, 8) + '...' : 'none');

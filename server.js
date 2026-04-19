@@ -77,19 +77,15 @@ app.get('/api/auth/url', (req, res) => {
   res.json({ url });
 });
 
-// AUTH CALLBACK - returns simple HTML that sends token to opener
+// AUTH CALLBACK - popup flow with postMessage
 app.get('/api/auth/callback', async (req, res) => {
   const { code, error } = req.query;
   
   console.log('=== AUTH CALLBACK ===');
   console.log('code:', !!code, 'error:', error);
   
-  if (error) {
-    return res.send(`<script>window.opener.postMessage({error:'${error}'},'*');window.close();</script>`);
-  }
-  if (!code) {
-    return res.send(`<script>window.opener.postMessage({error:'no_code'},'*');window.close();</script>`);
-  }
+  if (error) return res.send(`<script>opener.postMessage({error:'${error}'},'*');close();</script>`);
+  if (!code) return res.send(`<script>opener.postMessage({error:'no_code'},'*');close();</script>`);
   
   try {
     const oauth2Client = createOAuth2Client();
@@ -104,13 +100,11 @@ app.get('/api/auth/callback', async (req, res) => {
       user = await oauth2.userinfo.get();
     } catch (err) {
       console.error('User info error:', err);
-      return res.send(`<script>window.opener.postMessage({error:'user_info_failed'},'*');window.close();</script>`);
+      return res.send(`<script>opener.postMessage({error:'user_info_failed'},'*');close();</script>`);
     }
     
     console.log('User data:', user?.data?.email);
-    if (!user?.data) {
-      return res.send(`<script>window.opener.postMessage({error:'no_user'},'*');window.close();</script>`);
-    }
+    if (!user?.data) return res.send(`<script>opener.postMessage({error:'no_user'},'*');close();</script>`);
     
     const authToken = createToken();
     console.log('Created token:', authToken.substring(0, 8) + '...');
@@ -123,11 +117,11 @@ app.get('/api/auth/callback', async (req, res) => {
       createdAt: Date.now()
     });
     
-    // Send token back to opener window
-    res.send(`<script>window.opener.postMessage({token:'${authToken}',user:${JSON.stringify(user.data)}},'*');window.close();</script>`);
+    // Send token to opener
+    res.send(`<script>opener.postMessage({token:'${authToken}'},'*');close();</script>`);
   } catch (err) {
     console.error('Auth error:', err.message);
-    res.send(`<script>window.opener.postMessage({error:'${err.message}'},'*');window.close();</script>`);
+    res.send(`<script>opener.postMessage({error:'${err.message}'},'*');close();</script>`);
   }
 });
   
