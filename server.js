@@ -118,10 +118,12 @@ app.get('/api/auth/callback', async (req, res) => {
       createdAt: Date.now()
     });
     
-    // Set cookie using manual header for better compatibility
-    const cookieValue = 'driveclean_token=' + authToken + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + (30 * 24 * 60 * 60);
+    // Set cookie with explicit domain for Render
+    const isProd = req.get('host').includes('render.com');
+    let cookieValue = 'driveclean_token=' + authToken + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + (30 * 24 * 60 * 60);
+    if (isProd) cookieValue += '; Domain=' + req.get('host').replace('www.', '');
     res.setHeader('Set-Cookie', cookieValue);
-    console.log('Cookie set');
+    console.log('Cookie set, isProd:', isProd);
     
     res.redirect('/');
   } catch (err) {
@@ -328,7 +330,17 @@ app.post('/api/empty-trash', requireAuth, async (req, res) => {
 
 // HEALTH CHECK
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', users: users.size });
+  res.json({ status: 'ok', users: users.size, host: req.get('host') });
+});
+
+// DEBUG
+app.get('/api/debug', (req, res) => {
+  res.json({
+    cookies: req.headers.cookie,
+    host: req.get('host'),
+    origin: req.get('origin'),
+    referer: req.get('referer')
+  });
 });
 
 // HOME
