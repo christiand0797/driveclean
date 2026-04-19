@@ -118,12 +118,12 @@ app.get('/api/auth/callback', async (req, res) => {
       createdAt: Date.now()
     });
     
-    // Set cookie with explicit domain for Render
-    const isProd = req.get('host').includes('render.com');
-    let cookieValue = 'driveclean_token=' + authToken + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + (30 * 24 * 60 * 60);
-    if (isProd) cookieValue += '; Domain=' + req.get('host').replace('www.', '');
-    res.setHeader('Set-Cookie', cookieValue);
-    console.log('Cookie set, isProd:', isProd);
+    // Simple cookie - no SameSite for cross-site redirect compatibility
+    res.cookie('driveclean_token', authToken, {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      httpOnly: true,
+      path: '/'
+    });
     
     res.redirect('/');
   } catch (err) {
