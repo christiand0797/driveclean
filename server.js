@@ -1,5 +1,12 @@
 require('dotenv').config();
 const express = require('express');
+
+// Suppress MemoryStore warning in production
+const original warn = console.warn;
+console.warn = (...args) => {
+  if (args[0]?.includes?.('MemoryStore')) return;
+  original.apply(console, args);
+};
 const session = require('express-session');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -28,10 +35,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Use memory store for sessions (fine for small apps)
+const MemoryStore = require('express-session').MemoryStore;
+const sessionStore = new MemoryStore();
+
 app.use(session({
+  store: sessionStore,
   secret: config.sessionSecret,
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false,
   cookie: { 
     httpOnly: true,
     secure: false,
