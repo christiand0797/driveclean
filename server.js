@@ -148,22 +148,31 @@ app.post('/api/scan', async (req, res) => {
       photos: [], shared: [], starred: [], folders: []
     };
     
-    // === DRIVE - ALL FILES ===
+    // === DRIVE - ALL FILES (no limit) ===
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
-    let pageToken;
     let fileCount = 0;
+    let nextPageToken = null;
+    
     do {
       const response = await drive.files.list({
         pageSize: 100,
         fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink,iconLink,webViewLink,shared,starred,parents)',
         q: "trashed=false",
-        orderBy: 'modifiedTime desc'
+        orderBy: 'modifiedTime desc',
+        pageToken: nextPageToken
       });
+      
       const files = response.data.files || [];
+      if (!files.length) break;
+      
       results.files.push(...files);
       fileCount += files.length;
-      pageToken = response.data.nextPageToken;
-    } while (pageToken && fileCount < 5000);
+      nextPageToken = response.data.nextPageToken;
+      
+      console.log('Scanned', fileCount, 'files...');
+    } while (nextPageToken);
+    
+    console.log('Total Drive files scanned:', results.files.length);
     
     results.total = results.files.length;
     
@@ -185,43 +194,69 @@ app.post('/api/scan', async (req, res) => {
     const oneYear = new Date(); oneYear.setFullYear(oneYear.getFullYear() - 1);
     results.old = results.files.filter(f => new Date(f.createdTime) < oneYear);
     
-    // === GMAIL - ALL EMAILS ===
+    // === GMAIL - ALL EMAILS (unlimited) ===
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    let emailCount = 0;
+    let emailPage = null;
     try {
-      let emailToken;
       do {
-        const r = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: emailToken });
-        results.emails.push(...(r.data.messages || []));
-        emailToken = r.data.nextPageToken;
-      } while (emailToken && results.emails.length < 5000);
+        const r = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: emailPage });
+        const msgs = r.data.messages || [];
+        if (!msgs.length) break;
+        results.emails.push(...msgs);
+        emailCount += msgs.length;
+        emailPage = r.data.nextPageToken;
+        console.log('Scanned', emailCount, 'emails...');
+      } while (emailPage);
     } catch (e) { console.log('Gmail error:', e.message); }
     
     try {
-      const promo = await gmail.users.messages.list({ userId: 'me', maxResults: 200, q: 'category:promotions' });
-      results.promotions = promo.data.messages || [];
+      let promoPage = null;
+      do {
+        const p = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: promoPage, q: 'category:promotions' });
+        if (!p.data.messages?.length) break;
+        results.promotions.push(...p.data.messages);
+        promoPage = p.data.nextPageToken;
+      } while (promoPage);
     } catch (e) {}
     
     try {
-      const social = await gmail.users.messages.list({ userId: 'me', maxResults: 200, q: 'category:social' });
-      results.social = social.data.messages || [];
+      let socialPage = null;
+      do {
+        const s = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: socialPage, q: 'category:social' });
+        if (!s.data.messages?.length) break;
+        results.social.push(...s.data.messages);
+        socialPage = s.data.nextPageToken;
+      } while (socialPage);
     } catch (e) {}
     
     try {
-      const spam = await gmail.users.messages.list({ userId: 'me', maxResults: 200, q: 'category:spam' });
-      results.spam = spam.data.messages || [];
+      let spamPage = null;
+      do {
+        const sp = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: spamPage, q: 'category:spam' });
+        if (!sp.data.messages?.length) break;
+        results.spam.push(...sp.data.messages);
+        spamPage = sp.data.nextPageToken;
+      } while (spamPage);
     } catch (e) {}
     
-    // === GOOGLE PHOTOS ===
+    // === GOOGLE PHOTOS (unlimited) ===
     try {
       const photos = google.photoslibrary({ version: 'v1', auth: oauth2Client });
-      let photoToken;
+      let photoPage = null;
+      let photoCount = 0;
       do {
-        const p = await photos.mediaItems.list({ pageSize: 100, pageToken: photoToken });
-        results.photos.push(...(p.data.mediaItems || []));
-        photoToken = p.data.nextPageToken;
-      } while (photoToken && results.photos.length < 5000);
+        const p = await photos.mediaItems.list({ pageSize: 100, pageToken: photoPage });
+        const items = p.data.mediaItems || [];
+        if (!items.length) break;
+        results.photos.push(...items);
+        photoCount += items.length;
+        photoPage = p.data.nextPageToken;
+        console.log('Scanned', photoCount, 'photos...');
+      } while (photoPage);
     } catch (e) { console.log('Photos error:', e.message); }
     
+    console.log('SCAN COMPLETE - Files:', results.files.length, 'Emails:', results.emails.length, 'Photos:', results.photos.length);
     res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
