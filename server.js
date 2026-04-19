@@ -92,33 +92,31 @@ app.get('/api/auth/callback', async (req, res) => {
     oauth2Client.setCredentials(tokens);
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
     
-    oauth2.userinfo.get((err, user) => {
-      if (err || !user.data) {
-        console.error('User info error:', err);
-        return res.redirect('/?error=user_info_failed');
-      }
-      
-      const userId = user.data.email;
-      const authToken = createToken();
-      
-      // Store user data
-      users.set(authToken, {
-        tokens: encrypt(JSON.stringify(tokens)),
-        email: user.data.email,
-        name: user.data.name,
-        picture: user.data.picture,
-        createdAt: Date.now()
-      });
-      
-      // Set cookie
-      res.cookie('driveclean_token', authToken, {
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        httpOnly: true,
-        sameSite: 'lax'
-      });
-      
-      res.redirect('/');
+    const user = await oauth2.userinfo.get().catch(err => {
+      console.error('User info error:', err);
+      return res.redirect('/?error=user_info_failed');
     });
+    
+    if (!user?.data) return res.redirect('/?error=user_info_failed');
+    
+    const userId = user.data.email;
+    const authToken = createToken();
+    
+    users.set(authToken, {
+      tokens: encrypt(JSON.stringify(tokens)),
+      email: user.data.email,
+      name: user.data.name,
+      picture: user.data.picture,
+      createdAt: Date.now()
+    });
+    
+    res.cookie('driveclean_token', authToken, {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      httpOnly: true,
+      sameSite: 'lax'
+    });
+    
+    res.redirect('/');
   } catch (err) {
     console.error('Auth error:', err.message);
     res.redirect('/?error=auth_failed');
