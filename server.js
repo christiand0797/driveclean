@@ -1,16 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-
-// Suppress MemoryStore warning in production
-const originalWarn = console.warn;
-console.warn = (...args) => {
-  if (args[0]?.includes?.('MemoryStore')) return;
-  originalWarn.apply(console, args);
-};
-
-// Trust proxy for production
-app.set('trust proxy', 1);
-const session = require('express-session');
 const helmet = require('helmet');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -21,15 +10,10 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const config = {
-  google: {
-    clientId: process.env.GOOGLE_CLIENT_ID || '',
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    redirectUri: process.env.REDIRECT_URI || ''
-  },
-  sessionSecret: process.env.SESSION_SECRET || 'driveclean-secret',
-  encryptionKey: process.env.ENCRYPTION_KEY || 'driveclean-key'
-};
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+const TOKEN_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+
+const users = new Map(); // userId -> { tokens, email, name, picture }
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: '*', credentials: true }));
@@ -38,42 +22,39 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Use memory store for sessions (fine for small apps)
-const MemoryStore = require('express-session').MemoryStore;
-const sessionStore = new MemoryStore();
-
-app.use(session({
-  store: sessionStore,
-  secret: config.sessionSecret,
-  resave: false,
-  saveUninitialized: false,
-  cookie: { 
-    maxAge: 24 * 60 * 60 * 1000,
-    httpOnly: false,
-    sameSite: 'lax'
-  }
-}));
-
 function encrypt(text) {
   const CryptoJS = require('crypto-js');
-  return CryptoJS.AES.encrypt(text, config.encryptionKey).toString();
+  return CryptoJS.AES.encrypt(text, ENCRYPTION_KEY).toString();
 }
 
 function decrypt(encrypted) {
   const CryptoJS = require('crypto-js');
   try {
-    return CryptoJS.AES.decrypt(encrypted, config.encryptionKey).toString(CryptoJS.enc.Utf8);
+    return CryptoJS.AES.decrypt(encrypted, ENCRYPTION_KEY).toString(CryptoJS.enc.Utf8);
   } catch (e) { return null; }
 }
 
-function createOAuth2Client() {
-  return new google.auth.OAuth2(config.google.clientId, config.google.clientSecret, config.google.redirectUri);
+function createToken() {
+  return crypto.randomBytes(32).toString('hex');
 }
 
-// ==================== AUTH ====================
+function createOAuth2Client() {
+  return new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.REDIRECT_URI
+  );
+}
 
+// AUTH URL
 app.get('/api/auth/url', (req, res) => {
   const oauth2Client = createOAuth2Client();
+  const token = createToken();
+  
+  // Store pending token
+  req.session = req.session || {};
+  req.session.pendingToken = token;
+  
   const scopes = [
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/drive.file',
@@ -85,31 +66,57 @@ app.get('/api/auth/url', (req, res) => {
     'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/userinfo.email'
   ];
+  
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: scopes,
-    prompt: 'consent'
+    prompt: 'consent',
+    state: token
   });
-  res.json({ url });
+  
+  res.json({ url, token });
 });
 
+// AUTH CALLBACK
 app.get('/api/auth/callback', async (req, res) => {
-  const { code, error: errorDesc } = req.query;
-  if (errorDesc) return res.redirect('/?error=' + encodeURIComponent(errorDesc));
+  const { code, state: token, error } = req.query;
+  
+  if (error) return res.redirect('/?error=' + encodeURIComponent(error));
   if (!code) return res.redirect('/?error=no_code');
   
   try {
     const oauth2Client = createOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
-    req.session.tokens = encrypt(JSON.stringify(tokens));
     
-    // Force save session before redirect
-    req.session.save((err) => {
-      if (err) {
-        console.error('Session save error:', err);
-        return res.redirect('/?error=session_failed');
+    // Get user info
+    oauth2Client.setCredentials(tokens);
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    
+    oauth2.userinfo.get((err, user) => {
+      if (err || !user.data) {
+        console.error('User info error:', err);
+        return res.redirect('/?error=user_info_failed');
       }
-      console.log('Session saved, redirecting...');
+      
+      const userId = user.data.email;
+      const authToken = createToken();
+      
+      // Store user data
+      users.set(authToken, {
+        tokens: encrypt(JSON.stringify(tokens)),
+        email: user.data.email,
+        name: user.data.name,
+        picture: user.data.picture,
+        createdAt: Date.now()
+      });
+      
+      // Set cookie
+      res.cookie('driveclean_token', authToken, {
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        httpOnly: true,
+        sameSite: 'lax'
+      });
+      
       res.redirect('/');
     });
   } catch (err) {
@@ -118,118 +125,97 @@ app.get('/api/auth/callback', async (req, res) => {
   }
 });
 
-// ==================== USER ====================
-
+// GET CURRENT USER
 app.get('/api/user', (req, res) => {
-  console.log('Session ID:', req.sessionID);
-  console.log('Has tokens:', !!req.session.tokens);
+  const token = req.cookies.driveclean_token;
   
-  if (!req.session.tokens) return res.json({ loggedIn: false, sessionId: req.sessionID });
+  if (!token) return res.json({ loggedIn: false });
   
-  try {
-    const oauth2Client = createOAuth2Client();
-    const decrypted = decrypt(req.session.tokens);
-    console.log('Decrypted tokens:', !!decrypted);
-    
-    if (!decrypted) return res.json({ loggedIn: false, sessionId: req.sessionID });
-    
-    const tokens = JSON.parse(decrypted);
-    oauth2Client.setCredentials(tokens);
-    
-    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
-    oauth2.userinfo.get((err, user) => {
-      if (err) return res.json({ loggedIn: false, error: err.message, sessionId: req.sessionID });
-      res.json({ loggedIn: true, user: { name: user.data.name, email: user.data.email, picture: user.data.picture }, sessionId: req.sessionID });
-    });
-  } catch (e) {
-    res.json({ loggedIn: false, error: e.message, sessionId: req.sessionID });
-  }
-});
-
-app.get('/api/debug', (req, res) => {
+  const user = users.get(token);
+  if (!user) return res.json({ loggedIn: false });
+  
   res.json({
-    sessionId: req.sessionID,
-    hasTokens: !!req.session.tokens,
-    cookie: req.headers.cookie,
-    userAgent: req.headers['user-agent'],
-    domain: req.get('host'),
-    protocol: req.protocol
+    loggedIn: true,
+    user: {
+      email: user.email,
+      name: user.name,
+      picture: user.picture
+    }
   });
 });
 
-// Force session save test
-app.get('/api/session-test', (req, res) => {
-  req.session.test = 'hello';
-  req.session.save((err) => {
-    if (err) return res.json({ error: err.message });
-    res.json({ sessionId: req.sessionID, saved: true, test: req.session.test });
-  });
+// LOGOUT
+app.get('/api/logout', (req, res) => {
+  const token = req.cookies.driveclean_token;
+  if (token) users.delete(token);
+  res.clearCookie('driveclean_token');
+  res.json({ success: true });
 });
 
-// ==================== STORAGE ====================
-
-app.get('/api/storage', async (req, res) => {
-  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
+// MIDDLEWARE - require auth
+function requireAuth(req, res, next) {
+  const token = req.cookies.driveclean_token;
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
   
+  const user = users.get(token);
+  if (!user) return res.status(401).json({ error: 'Invalid token' });
+  
+  req.user = user;
+  next();
+}
+
+// GET AUTHENTICATED USER
+function getAuthUser(req) {
+  const token = req.cookies.driveclean_token;
+  return token ? users.get(token) : null;
+}
+
+// STORAGE
+app.get('/api/storage', requireAuth, async (req, res) => {
   try {
     const oauth2Client = createOAuth2Client();
-    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
+    oauth2Client.setCredentials(JSON.parse(decrypt(getAuthUser(req).tokens)));
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
-    const about = await drive.about.get({ fields: 'storageQuota,quotaBytesTotal,quotaBytesUsedAggregate' });
-    const quota = about.data.storageQuota || {};
+    const about = await drive.about.get({ fields: 'storageQuota' });
     res.json({
-      usage: quota.limit || 0,
-      usageInDrive: quota.usageInDrive || 0,
-      usageInTrash: quota.usageInTrash || 0,
-      totalUsed: about.data.quotaBytesUsedAggregate || 0
+      usage: about.data.storageQuota?.limit || 0,
+      usageInDrive: about.data.storageQuota?.usageInDrive || 0
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ==================== SCAN ====================
-
-app.post('/api/scan', async (req, res) => {
-  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
-  
+// SCAN
+app.post('/api/scan', requireAuth, async (req, res) => {
   try {
-    res.write('Scanning...\n');
     const oauth2Client = createOAuth2Client();
-    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
+    oauth2Client.setCredentials(JSON.parse(decrypt(getAuthUser(req).tokens)));
     
     const results = { 
-      total: 0,
-      files: [], duplicates: [], large: [], old: [], empty: [], 
-      images: [], videos: [], documents: [], audios: [], archives: [],
-      emails: [], promotions: [], social: [], spam: [],
-      photos: [], shared: [], starred: [], folders: []
+      total: 0, files: [], duplicates: [], large: [], old: [], empty: [], 
+      images: [], videos: [], documents: [], 
+      emails: [], promotions: [], spam: [],
+      photos: []
     };
     
+    // DRIVE FILES
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     let pageToken = null;
-    let fileCount = 0;
     
-    res.write('Scanning Drive files...\n');
     do {
       const response = await drive.files.list({
         pageSize: 100,
         fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink,iconLink,webViewLink,shared,starred)',
-        q: "trashed=false",
         pageToken: pageToken
       });
-      
       const files = response.data.files || [];
       if (!files.length) break;
-      
       results.files.push(...files);
-      fileCount += files.length;
       pageToken = response.data.nextPageToken;
-      res.write(`Loaded ${fileCount} files...\n`);
     } while (pageToken);
     
     results.total = results.files.length;
-    res.write(`Total: ${results.total} files\n`);
     
     // Categorize
     const nameCount = {};
@@ -239,64 +225,39 @@ app.post('/api/scan', async (req, res) => {
     results.empty = results.files.filter(f => parseInt(f.size || 0) === 0 && !f.mimeType?.includes('folder'));
     results.images = results.files.filter(f => f.mimeType?.includes('image'));
     results.videos = results.files.filter(f => f.mimeType?.includes('video'));
-    results.audios = results.files.filter(f => f.mimeType?.includes('audio'));
-    results.documents = results.files.filter(f => f.mimeType?.includes('document') || f.mimeType?.includes('sheet') || f.mimeType?.includes('presentation'));
-    results.archives = results.files.filter(f => f.mimeType?.includes('zip') || f.mimeType?.includes('rar') || f.mimeType?.includes('tar'));
-    results.shared = results.files.filter(f => f.shared);
-    results.starred = results.files.filter(f => f.starred);
-    results.folders = results.files.filter(f => f.mimeType?.includes('folder'));
+    results.documents = results.files.filter(f => f.mimeType?.includes('document') || f.mimeType?.includes('sheet'));
     
     const oneYear = new Date(); oneYear.setFullYear(oneYear.getFullYear() - 1);
     results.old = results.files.filter(f => new Date(f.createdTime) < oneYear);
     
-    res.write('Scanning Gmail...\n');
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    
-    // All emails
-    let emailPage = null;
-    do {
-      try {
+    // GMAIL
+    try {
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      
+      let emailPage = null;
+      do {
         const r = await gmail.users.messages.list({ userId: 'me', maxResults: 500, pageToken: emailPage });
-        const msgs = r.data.messages || [];
-        if (!msgs.length) break;
-        results.emails.push(...msgs);
+        if (!r.data.messages?.length) break;
+        results.emails.push(...r.data.messages);
         emailPage = r.data.nextPageToken;
-        if (results.emails.length % 1000 === 0) res.write(`${results.emails.length} emails...\n`);
-      } catch (e) { break; }
-    } while (emailPage);
+      } while (emailPage);
+      
+      results.promotions = (await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:promotions' })).data.messages || [];
+      results.spam = (await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:spam' })).data.messages || [];
+    } catch (e) { console.log('Gmail error:', e.message); }
     
-    // Promotions
-    try {
-      let p = await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:promotions' });
-      results.promotions = p.data.messages || [];
-    } catch (e) {}
-    
-    // Social
-    try {
-      let s = await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:social' });
-      results.social = s.data.messages || [];
-    } catch (e) {}
-    
-    // Spam
-    try {
-      let sp = await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:spam' });
-      results.spam = sp.data.messages || [];
-    } catch (e) {}
-    
-    res.write('Scanning Google Photos...\n');
+    // PHOTOS
     try {
       const photos = google.photoslibrary({ version: 'v1', auth: oauth2Client });
       let photoPage = null;
       do {
         const p = await photos.mediaItems.list({ pageSize: 100, pageToken: photoPage });
-        const items = p.data.mediaItems || [];
-        if (!items.length) break;
-        results.photos.push(...items);
+        if (!p.data.mediaItems?.length) break;
+        results.photos.push(...p.data.mediaItems);
         photoPage = p.data.nextPageToken;
       } while (photoPage);
-    } catch (e) { res.write('Photos error: ' + e.message + '\n'); }
+    } catch (e) { console.log('Photos error:', e.message); }
     
-    res.write('Done!\n');
     res.json(results);
   } catch (err) {
     console.error('Scan error:', err.message);
@@ -304,16 +265,14 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// ==================== DELETE ====================
-
-app.post('/api/delete', async (req, res) => {
-  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
+// DELETE
+app.post('/api/delete', requireAuth, async (req, res) => {
   const { fileIds } = req.body;
   if (!fileIds?.length) return res.status(400).json({ error: 'No files' });
   
   try {
     const oauth2Client = createOAuth2Client();
-    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
+    oauth2Client.setCredentials(JSON.parse(decrypt(getAuthUser(req).tokens)));
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     
     let deleted = 0;
@@ -321,22 +280,22 @@ app.post('/api/delete', async (req, res) => {
       try {
         await drive.files.delete({ fileId: id });
         deleted++;
-      } catch (e) { console.log('Delete error:', e.message); }
+      } catch (e) {}
     }
-    res.json({ deleted, count: deleted });
+    res.json({ deleted });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/trash', async (req, res) => {
-  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
+// TRASH
+app.post('/api/trash', requireAuth, async (req, res) => {
   const { fileIds } = req.body;
   if (!fileIds?.length) return res.status(400).json({ error: 'No files' });
   
   try {
     const oauth2Client = createOAuth2Client();
-    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
+    oauth2Client.setCredentials(JSON.parse(decrypt(getAuthUser(req).tokens)));
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     
     for (const id of fileIds.slice(0, 100)) {
@@ -350,12 +309,11 @@ app.post('/api/trash', async (req, res) => {
   }
 });
 
-app.post('/api/empty-trash', async (req, res) => {
-  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
-  
+// EMPTY TRASH
+app.post('/api/empty-trash', requireAuth, async (req, res) => {
   try {
     const oauth2Client = createOAuth2Client();
-    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
+    oauth2Client.setCredentials(JSON.parse(decrypt(getAuthUser(req).tokens)));
     await google.drive({ version: 'v3', auth: oauth2Client }).files.emptyTrash();
     res.json({ success: true });
   } catch (err) {
@@ -363,91 +321,14 @@ app.post('/api/empty-trash', async (req, res) => {
   }
 });
 
-// ==================== RENAME ====================
-
-app.post('/api/rename', async (req, res) => {
-  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
-  const { fileId, newName } = req.body;
-  if (!fileId || !newName) return res.status(400).json({ error: 'Missing fileId or newName' });
-  
-  try {
-    const oauth2Client = createOAuth2Client();
-    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
-    await google.drive({ version: 'v3', auth: oauth2Client }).files.update({
-      fileId,
-      requestBody: { name: newName }
-    });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// HEALTH CHECK
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', users: users.size });
 });
 
-// ==================== FILE INFO ====================
-
-app.get('/api/file/:fileId', async (req, res) => {
-  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
-  
-  try {
-    const oauth2Client = createOAuth2Client();
-    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
-    const file = await google.drive({ version: 'v3', auth: oauth2Client }).files.get({
-      fileId: req.params.fileId,
-      fields: 'id,name,mimeType,size,createdTime,modifiedTime,thumbnailLink,webViewLink,description,owners,shared'
-    });
-    res.json(file.data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ==================== COPY FILE ====================
-
-app.post('/api/copy', async (req, res) => {
-  if (!req.session.tokens) return res.status(401).json({ error: 'Not authenticated' });
-  const { fileId, newName } = req.body;
-  if (!fileId) return res.status(400).json({ error: 'Missing fileId' });
-  
-  try {
-    const oauth2Client = createOAuth2Client();
-    oauth2Client.setCredentials(JSON.parse(decrypt(req.session.tokens)));
-    const file = await google.drive({ version: 'v3', auth: oauth2Client }).files.copy({
-      fileId,
-      requestBody: { name: newName || undefined }
-    });
-    res.json(file.data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ==================== LOGOUT ====================
-
-app.get('/api/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ success: true });
-});
-
-// ==================== HOME ====================
-
+// HOME
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Health check for Render
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Status endpoint
-app.get('/api/status', (req, res) => {
-  res.json({ 
-    status: 'running',
-    sessionId: req.sessionID,
-    hasSession: !!req.session.tokens,
-    uptime: process.uptime(),
-    memory: process.memoryUsage()
-  });
 });
 
 app.listen(PORT, () => {
