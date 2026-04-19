@@ -10,24 +10,25 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Generate encryption key if not set
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
-const TOKEN_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
 
-const users = new Map(); // userId -> { tokens, email, name, picture }
+// In-memory user store
+const users = new Map();
 
+// Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// HEALTH CHECK - must be before static
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', users: users.size, host: req.get('host') });
-});
+// Health check
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Encrypt tokens
 function encrypt(text) {
   const CryptoJS = require('crypto-js');
   return CryptoJS.AES.encrypt(text, ENCRYPTION_KEY).toString();
@@ -52,8 +53,12 @@ function createOAuth2Client() {
   );
 }
 
-// AUTH URL - returns OAuth URL
+// AUTH URL - returns Google OAuth URL
 app.get('/api/auth/url', (req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID') {
+    return res.status(500).json({ error: 'GOOGLE_CLIENT_ID not configured' });
+  }
+  
   const oauth2Client = createOAuth2Client();
   
   const scopes = [
@@ -77,22 +82,26 @@ app.get('/api/auth/url', (req, res) => {
   res.json({ url });
 });
 
-
-
-// AUTH CALLBACK
+// AUTH CALLBACK - exchange code for tokens, redirect to home with token
 app.get('/api/auth/callback', async (req, res) => {
-  const { code, state: token, error } = req.query;
+  const { code, error } = req.query;
   
-  console.log('=== AUTH CALLBACK ===');
-  console.log('code:', !!code, 'state:', token, 'error:', error);
+  if (error) {
+    console.error('Auth error:', error);
+    return res.redirect('/?error=' + encodeURIComponent(error));
+  }
   
-  if (error) return res.redirect('/?error=' + encodeURIComponent(error));
-  if (!code) return res.redirect('/?error=no_code');
+  if (!code) {
+    return res.redirect('/?error=no_code');
+  }
   
   try {
     const oauth2Client = createOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
-    console.log('Got tokens:', !!tokens);
+    
+    if (!tokens) {
+      return res.redirect('/?error=no_tokens');
+    }
     
     // Get user info
     oauth2Client.setCredentials(tokens);
@@ -102,54 +111,48 @@ app.get('/api/auth/callback', async (req, res) => {
     try {
       user = await oauth2.userinfo.get();
     } catch (err) {
-      console.error('User info error:', err);
+      console.error('User info error:', err.message);
       return res.redirect('/?error=user_info_failed');
     }
     
-    console.log('User data:', user?.data?.email);
-    if (!user?.data) return res.redirect('/?error=user_info_failed');
+    if (!user?.data) {
+      return res.redirect('/?error=no_user');
+    }
     
+    // Create auth token
     const authToken = createToken();
-    console.log('Created token:', authToken.substring(0, 8) + '...');
     
+    // Store user data with encrypted tokens
     users.set(authToken, {
       tokens: encrypt(JSON.stringify(tokens)),
       email: user.data.email,
       name: user.data.name,
-      picture: user.data.picture,
-      createdAt: Date.now()
+      picture: user.data.picture
     });
     
-    // Also pass token in URL for redundancy
-    res.redirect('/?t=' + authToken);
+    console.log('Logged in:', user.data.email);
+    
+    // Redirect to home with token - client will handle storing it
+    res.redirect('/?login=success&token=' + authToken);
+    
   } catch (err) {
-    console.error('Auth error:', err.message, err.stack);
+    console.error('Auth error:', err.message);
     res.redirect('/?error=auth_failed');
   }
 });
 
-// GET CURRENT USER
+// GET CURRENT USER - check if logged in
 app.get('/api/user', (req, res) => {
-  // Check cookie first, then URL token
-  let token = req.cookies.driveclean_token;
+  const token = req.query.token || req.cookies.token;
   
-  // If no cookie, check URL param
-  if (!token && req.query.t) {
-    token = req.query.t;
+  if (!token) {
+    return res.json({ loggedIn: false });
   }
   
-  if (!token) return res.json({ loggedIn: false });
-  
   const user = users.get(token);
-  if (!user) return res.json({ loggedIn: false });
   
-  // If token was from URL, set cookie for future requests
-  if (!req.cookies.driveclean_token && req.query.t) {
-    res.cookie('driveclean_token', token, {
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      httpOnly: true,
-      path: '/'
-    });
+  if (!user) {
+    return res.json({ loggedIn: false });
   }
   
   res.json({
@@ -164,37 +167,34 @@ app.get('/api/user', (req, res) => {
 
 // LOGOUT
 app.get('/api/logout', (req, res) => {
-  const token = req.cookies.driveclean_token;
+  const token = req.query.token || req.cookies.token;
   if (token) users.delete(token);
-  res.clearCookie('driveclean_token');
   res.json({ success: true });
 });
 
-// MIDDLEWARE - require auth
+// Require auth middleware
 function requireAuth(req, res, next) {
-  let token = req.cookies.driveclean_token;
-  if (!token && req.query.t) {
-    token = req.query.t;
+  const token = req.query.token || req.cookies.token;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Not authenticated' });
   }
-  if (!token) return res.status(401).json({ error: 'Not authenticated' });
   
   const user = users.get(token);
-  if (!user) return res.status(401).json({ error: 'Invalid token' });
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
   
   req.user = user;
   next();
 }
 
-// GET AUTHENTICATED USER
 function getAuthUser(req) {
-  let token = req.cookies.driveclean_token;
-  if (!token && req.query.t) {
-    token = req.query.t;
-  }
+  const token = req.query.token || req.cookies.token;
   return token ? users.get(token) : null;
 }
 
-// STORAGE
+// GET STORAGE
 app.get('/api/storage', requireAuth, async (req, res) => {
   try {
     const oauth2Client = createOAuth2Client();
@@ -210,7 +210,7 @@ app.get('/api/storage', requireAuth, async (req, res) => {
   }
 });
 
-// SCAN
+// SCAN - get all files
 app.post('/api/scan', requireAuth, async (req, res) => {
   try {
     const oauth2Client = createOAuth2Client();
@@ -223,9 +223,10 @@ app.post('/api/scan', requireAuth, async (req, res) => {
       photos: []
     };
     
-    // DRIVE FILES - get ALL files not in trash (unlimited)
+    // DRIVE FILES - ALL files not in trash
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     let pageToken = null;
+    let fileCount = 0;
     
     do {
       const response = await drive.files.list({
@@ -234,13 +235,18 @@ app.post('/api/scan', requireAuth, async (req, res) => {
         q: "trashed=false",
         pageToken: pageToken
       });
+      
       const files = response.data?.files || [];
       if (!files.length) break;
+      
       results.files.push(...files);
+      fileCount += files.length;
       pageToken = response.data?.nextPageToken;
+      console.log('Loaded ' + fileCount + ' Drive files');
     } while (pageToken);
     
     results.total = results.files.length;
+    console.log('Total Drive files: ' + results.total);
     
     // Categorize
     const nameCount = {};
@@ -255,7 +261,7 @@ app.post('/api/scan', requireAuth, async (req, res) => {
     const oneYear = new Date(); oneYear.setFullYear(oneYear.getFullYear() - 1);
     results.old = results.files.filter(f => new Date(f.createdTime) < oneYear);
     
-    // GMAIL - get all emails (unlimited)
+    // GMAIL
     try {
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
       
@@ -267,11 +273,13 @@ app.post('/api/scan', requireAuth, async (req, res) => {
         emailPage = r.data.nextPageToken;
       } while (emailPage);
       
+      console.log('Total emails: ' + results.emails.length);
+      
       results.promotions = (await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:promotions -in:trash' })).data?.messages || [];
       results.spam = (await gmail.users.messages.list({ userId: 'me', maxResults: 500, q: 'category:spam -in:trash' })).data?.messages || [];
     } catch (e) { console.log('Gmail error:', e.message); }
     
-    // GOOGLE PHOTOS - get all media (unlimited)
+    // GOOGLE PHOTOS
     try {
       const photos = google.photoslibrary({ version: 'v1', auth: oauth2Client });
       let photoPage = null;
@@ -281,16 +289,17 @@ app.post('/api/scan', requireAuth, async (req, res) => {
         results.photos.push(...p.data.mediaItems);
         photoPage = p.data.nextPageToken;
       } while (photoPage);
+      console.log('Total Photos: ' + results.photos.length);
     } catch (e) { console.log('Photos error:', e.message); }
     
     res.json(results);
   } catch (err) {
-    console.error('Scan error:', err.message, err.stack);
-    res.status(500).json({ error: err.message, results: results });
+    console.error('Scan error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE
+// DELETE files permanently
 app.post('/api/delete', requireAuth, async (req, res) => {
   const { fileIds } = req.body;
   if (!fileIds?.length) return res.status(400).json({ error: 'No files' });
@@ -305,7 +314,7 @@ app.post('/api/delete', requireAuth, async (req, res) => {
       try {
         await drive.files.delete({ fileId: id });
         deleted++;
-      } catch (e) {}
+      } catch (e) { console.log('Delete error:', e.message); }
     }
     res.json({ deleted });
   } catch (err) {
@@ -313,7 +322,7 @@ app.post('/api/delete', requireAuth, async (req, res) => {
   }
 });
 
-// TRASH
+// TRASH files
 app.post('/api/trash', requireAuth, async (req, res) => {
   const { fileIds } = req.body;
   if (!fileIds?.length) return res.status(400).json({ error: 'No files' });
@@ -346,13 +355,13 @@ app.post('/api/empty-trash', requireAuth, async (req, res) => {
   }
 });
 
-// HOME
+// Home
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log('DriveClean running on port ' + PORT);
+  console.log('DriveClean running on http://localhost:' + PORT);
 });
 
 module.exports = app;
