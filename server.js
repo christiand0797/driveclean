@@ -92,10 +92,13 @@ app.get('/api/auth/callback', async (req, res) => {
     oauth2Client.setCredentials(tokens);
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
     
-    const user = await oauth2.userinfo.get().catch(err => {
+    let user;
+    try {
+      user = await oauth2.userinfo.get();
+    } catch (err) {
       console.error('User info error:', err);
       return res.redirect('/?error=user_info_failed');
-    });
+    }
     
     if (!user?.data) return res.redirect('/?error=user_info_failed');
     
