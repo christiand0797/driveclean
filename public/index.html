@@ -175,7 +175,7 @@
       const res = await fetch('/api/auth/url', { credentials: 'include' });
       const { url } = await res.json();
       
-      // Redirect entire page for auth
+      // Redirect for OAuth
       window.location.href = url;
     }
     
@@ -186,14 +186,14 @@
       
       if (params.get('error')) {
         showToast(params.get('error'), 'error');
-        window.history.replaceState({}, '', '/');
+        window.history.replaceState({}, '', window.location.pathname);
       }
       
-      // Check hash for token
-      if (window.location.hash && window.location.hash.startsWith('#token=')) {
-        token = window.location.hash.substring(7);
+      // Check for t= in URL
+      if (params.has('t')) {
+        token = params.get('t');
         window.localStorage.setItem('driveclean_token', token);
-        window.location.hash = '';
+        window.history.replaceState({}, '', window.location.pathname);
         showToast('Logged in!', 'success');
       }
       
