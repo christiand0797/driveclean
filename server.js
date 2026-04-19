@@ -118,14 +118,8 @@ app.get('/api/auth/callback', async (req, res) => {
       createdAt: Date.now()
     });
     
-    // Simple cookie - no SameSite for cross-site redirect compatibility
-    res.cookie('driveclean_token', authToken, {
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      httpOnly: true,
-      path: '/'
-    });
-    
-    res.redirect('/');
+    // Also pass token in URL for redundancy
+    res.redirect('/?t=' + authToken);
   } catch (err) {
     console.error('Auth error:', err.message, err.stack);
     res.redirect('/?error=auth_failed');
@@ -134,7 +128,19 @@ app.get('/api/auth/callback', async (req, res) => {
 
 // GET CURRENT USER
 app.get('/api/user', (req, res) => {
-  const token = req.cookies.driveclean_token;
+  // Check both cookie and query param for token
+  let token = req.cookies.driveclean_token;
+  if (!token && req.query.t) {
+    token = req.query.t;
+    // Store token from URL as cookie
+    if (users.has(token)) {
+      res.cookie('driveclean_token', token, {
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        httpOnly: true,
+        path: '/'
+      });
+    }
+  }
   
   if (!token) return res.json({ loggedIn: false });
   
