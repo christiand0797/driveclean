@@ -881,7 +881,9 @@
 
       <div class="card" id="statsBreakdown">
         <h3 style="margin-bottom:15px;color:var(--cyan)">📈 File Type Breakdown</h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px">
+        <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
+          <div id="fileTypeChart" style="width:150px;height:150px;border-radius:50%;background:var(--bg-elevated);display:none"></div>
+          <div style="flex:1;min-width:200px">
           <div>
             <h4 style="color:var(--text-dim);font-size:12px;text-transform:uppercase;margin-bottom:10px">Extensions</h4>
             <div id="extBreakdown" style="display:flex;flex-wrap:wrap;gap:8px"></div>
@@ -971,6 +973,9 @@
             </div>
           </div>
           <p id="progressText" style="color:var(--text-dim)">Preparing scanner...</p>
+          <div id="rateLimitIndicator" style="display:none;margin-top:10px;font-size:12px;color:var(--warning)">
+            ⚠️ Rate limited - slowing down
+          </div>
           <div class="keyboard-shortcuts" style="justify-content:center;margin-top:30px">
             <div class="key-hint"><span class="key">Space</span> Scan</div>
             <div class="key-hint"><span class="key">S</span> Scan</div>
@@ -1005,9 +1010,15 @@
             <button class="btn btn-secondary btn-sm" onclick="keepNewest()" title="Keep newest duplicate">Newest</button>
             <button class="btn btn-secondary btn-sm" onclick="keepOldest()" title="Keep oldest duplicate">Oldest</button>
             <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>Delete Selected</button>
+            <select class="select-box" id="bulkSelect" onchange="applyBulkSelect(this.value);this.value=''">
+              <option value="">Quick Select...</option>
+              <option value="all">All in view</option>
+              <option value="large">All large files</option>
+              <option value="old">All old files</option>
+              <option value="empty">All empty files</option>
+            </select>
             <button class="btn btn-cyber" onclick="exportData('csv')" id="exportCsvBtn">CSV</button>
             <button class="btn btn-cyber" onclick="exportData('json')" id="exportJsonBtn">JSON</button>
-            <button class="btn btn-secondary" onclick="selectAllCategory()">Select All</button>
           </div>
 
           <div class="tabs">
@@ -1228,6 +1239,13 @@
       document.getElementById('progressStage').innerText = msg.stage;
       document.getElementById('progressFill').style.width = `${msg.progress}%`;
       
+      const rateIndicator = document.getElementById('rateLimitIndicator');
+      if (msg.stage?.includes('Rate limit')) {
+        rateIndicator.style.display = 'block';
+      } else {
+        rateIndicator.style.display = 'none';
+      }
+      
       if (msg.progress < 100) {
         document.getElementById('progressText').innerText = msg.stage;
       }
@@ -1303,6 +1321,22 @@
         mimeDiv.innerHTML = mimeData.map(([mime, count]) => 
           `<span class="badge" style="background:rgba(0,255,159,0.2);color:var(--secondary);margin:4px 4px 4px 0">${mime} (${count})</span>`
         ).join('');
+        
+        const chartDiv = document.getElementById('fileTypeChart');
+        if (chartDiv && mimeData.length > 0) {
+          const total = mimeData.reduce((sum, [,c]) => sum + c, 0);
+          const colors = ['#9d4edd', '#00ff9f', '#00f5ff', '#b5179e', '#ff0055', '#ffbe0b'];
+          let gradient = 'conic-gradient(';
+          let offset = 0;
+          mimeData.slice(0, 5).forEach(([mime, count], i) => {
+            const pct = (count / total) * 100;
+            gradient += `${colors[i % colors.length]} ${offset}% ${offset + pct}%, `;
+            offset += pct;
+          });
+          gradient = gradient.replace(/,\s*$/, ')');
+          chartDiv.style.background = gradient;
+          chartDiv.style.display = 'block';
+        }
       }
 
       const gmailData = data.gmail || {};
@@ -1474,10 +1508,24 @@
       updateDeleteBtn();
     }
 
-    function selectAllCategory() {
+function selectAllCategory() {
       const files = getCategoryFiles(currentTab);
       files.forEach(f => selectedFiles.add(f.id));
       renderFiles();
+      updateDeleteBtn();
+    }
+
+    function applyBulkSelect(type) {
+      if (!type) return;
+      if (type === 'all') {
+        const files = getCategoryFiles(currentTab);
+        files.forEach(f => selectedFiles.add(f.id));
+      } else {
+        const files = getCategoryFiles(type);
+        files.forEach(f => selectedFiles.add(f.id));
+      }
+      renderFiles();
+      updateDeleteBtn();
     }
 
     function updateDeleteBtn() {
