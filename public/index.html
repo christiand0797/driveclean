@@ -1005,7 +1005,8 @@
             <button class="btn btn-secondary btn-sm" onclick="keepNewest()" title="Keep newest duplicate">Newest</button>
             <button class="btn btn-secondary btn-sm" onclick="keepOldest()" title="Keep oldest duplicate">Oldest</button>
             <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>Delete Selected</button>
-            <button class="btn btn-cyber" onclick="exportCSV()" id="exportBtn">Export CSV</button>
+            <button class="btn btn-cyber" onclick="exportData('csv')" id="exportCsvBtn">CSV</button>
+            <button class="btn btn-cyber" onclick="exportData('json')" id="exportJsonBtn">JSON</button>
             <button class="btn btn-secondary" onclick="selectAllCategory()">Select All</button>
           </div>
 
@@ -1232,6 +1233,8 @@
       }
 
       if (msg.stage === 'Complete') {
+        playNotificationSound();
+        
         if (!scanData.total && msg.data) {
           scanData = msg.data;
         } else if (msg.data && msg.data.gmail) {
@@ -1423,7 +1426,7 @@
           <td class="file-icon-col"><span class="file-icon">${getIcon(file.mimeType)}</span></td>
           <td><div class="file-name" title="${file.name}${trashed}">${file.name}${trashed}</div>${file.count ? `<span class="badge badge-warning">${file.count} copies</span>` : ''}</td>
           <td class="file-size">${formatBytes(file.size)}</td>
-          <td class="file-date">${file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : '-'}</td>
+          <td class="file-date" title="${file.modifiedTime}">${file.modifiedTime ? formatAge(file.modifiedTime) : '-'}</td>
           <td class="file-actions">
             <button class="btn btn-sm btn-secondary" onclick="previewFile('${file.id}', '${(file.name||'').replace(/'/g, "\\'")}', '${file.mimeType}', ${file.size}, '${file.modifiedTime||''}')">View</button>
             ${!file.trashed ? `<button class="btn btn-sm btn-danger" onclick="deleteFile('${file.id}')">Delete</button>` : ''}
@@ -1619,19 +1622,32 @@
       }
     }
 
-    function exportCSV() {
+    function exportData(format) {
       const files = getCategoryFiles(currentTab);
-      let csv = 'Name,Size,Modified,MIME Type\n';
-      files.forEach(f => {
-        csv += `"${f.name}","${f.size}","${f.modifiedTime}","${f.mimeType}"\n`;
-      });
-      const blob = new Blob([csv], { type: 'text/csv' });
+      let content, mime, ext;
+      
+      if (format === 'json') {
+        content = JSON.stringify(files, null, 2);
+        mime = 'application/json';
+        ext = 'json';
+      } else {
+        content = 'Name,Size,Modified,MIME Type\n';
+        files.forEach(f => {
+          content += `"${f.name}","${f.size}","${f.modifiedTime}","${f.mimeType}"\n`;
+        });
+        mime = 'text/csv';
+        ext = 'csv';
+      }
+      
+      const blob = new Blob([content], { type: mime });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${currentTab}_files.csv`;
+      a.download = `${currentTab}_files.${ext}`;
       a.click();
     }
+
+    function exportCSV() { exportData('csv'); }
 
     function previewFile(id, name, mime, size, modified) {
       const modal = document.getElementById('previewModal');
@@ -1690,6 +1706,22 @@
       document.getElementById('previewModal').classList.remove('active');
     }
 
+    function playNotificationSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.3);
+      } catch (e) {}
+    }
+
     function toggleTheme() {
       const current = document.body.getAttribute('data-theme');
       const newTheme = current === 'light' ? 'dark' : 'light';
@@ -1724,6 +1756,18 @@
       const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatAge(dateStr) {
+      if (!dateStr) return 'Unknown';
+      const diff = Date.now() - new Date(dateStr).getTime();
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      if (days === 0) return 'Today';
+      if (days === 1) return 'Yesterday';
+      if (days < 7) return `${days} days ago`;
+      if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+      if (days < 365) return `${Math.floor(days / 30)} months ago`;
+      return `${Math.floor(days / 365)} years ago`;
     }
 
     function getIcon(mime) {
