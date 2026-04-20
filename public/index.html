@@ -1255,16 +1255,23 @@
       if (msg.stage === 'Complete') {
         playNotificationSound();
         
-        if (!scanData.total && msg.data) {
-          scanData = msg.data;
-        } else if (msg.data && msg.data.gmail) {
-          scanData.gmail = msg.data.gmail;
-        } else if (msg.data && msg.data.photos) {
-          scanData.photos = msg.data.photos;
+        if (msg.data) {
+          if (msg.data.total) {
+            scanData = msg.data;
+          } else if (msg.data.gmail) {
+            scanData.gmail = msg.data.gmail;
+            document.getElementById('quickPromos').innerText = (msg.data.gmail.promotions || 0).toLocaleString();
+            document.getElementById('quickSocial').innerText = (msg.data.gmail.social || 0).toLocaleString();
+          } else if (msg.data.photos) {
+            scanData.photos = msg.data.photos;
+          }
+        }
+        
+        if (scanData.total) {
+          showResults();
         }
         toggleScanUI(false);
         updateStats();
-        showResults();
         loadStorage();
       } else if (msg.stage === 'Error') {
         alert("Error: " + msg.error);
@@ -1319,13 +1326,14 @@
 
       const mimeData = data.mimeTypes || [];
       const mimeDiv = document.getElementById('mimeBreakdown');
+      const chartDiv = document.getElementById('fileTypeChart');
+      
       if (mimeData.length > 0) {
         mimeDiv.innerHTML = mimeData.map(([mime, count]) => 
           `<span class="badge" style="background:rgba(0,255,159,0.2);color:var(--secondary);margin:4px 4px 4px 0">${mime} (${count})</span>`
         ).join('');
         
-        const chartDiv = document.getElementById('fileTypeChart');
-        if (chartDiv && mimeData.length > 0) {
+        if (chartDiv) {
           const total = mimeData.reduce((sum, [,c]) => sum + c, 0);
           const colors = ['#9d4edd', '#00ff9f', '#00f5ff', '#b5179e', '#ff0055', '#ffbe0b'];
           let gradient = 'conic-gradient(';
