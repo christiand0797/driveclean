@@ -465,6 +465,7 @@ async function runDriveScan(jobId, ws) {
     const trashFiles = [];
     const sharedFiles = [];
     const orphanFiles = [];
+    const publicFiles = [];
     const mimeMap = new Map();
     
     const oneYearAgo = new Date();
@@ -511,6 +512,11 @@ async function runDriveScan(jobId, ws) {
 
             if (f.permissions && f.permissions.length > 1) {
               sharedFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime, shared: true });
+            }
+
+            const isPublic = f.permissions?.some(p => p.type === 'anyone');
+            if (isPublic) {
+              publicFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime, public: true });
             }
 
             if (f.owners && f.owners.length === 0) {
@@ -630,6 +636,7 @@ async function runDriveScan(jobId, ws) {
       trash: trashFiles.slice(0, 500),
       shared: sharedFiles.slice(0, 500),
       orphan: orphanFiles.slice(0, 500),
+      public: publicFiles.slice(0, 500),
       contentDupes: contentDupes.slice(0, 500),
       extensions: Array.from(extMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 20),
       mimeTypes: Array.from(mimeMap.entries()).sort((a, b) => b[1] - a[1]),

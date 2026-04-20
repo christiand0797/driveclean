@@ -910,6 +910,11 @@
           <div class="stat-number" id="statOrphan">0</div>
           <div class="stat-label">Orphaned</div>
         </div>
+        <div class="stat-card" onclick="showCategory('public')" data-category="public">
+          <div class="stat-icon">🌐</div>
+          <div class="stat-number" id="statPublic">0</div>
+          <div class="stat-label">Public</div>
+        </div>
       </div>
 
 <div class="card">
@@ -983,6 +988,7 @@
             <button class="tab" onclick="showTab('shared')" data-tab="shared">Shared</button>
             <button class="tab" onclick="showTab('orphan')" data-tab="orphan">Orphaned</button>
             <button class="tab" onclick="showTab('contentDupes')" data-tab="contentDupes">True Dupes</button>
+            <button class="tab" onclick="showTab('public')" data-tab="public">Public</button>
           </div>
 
           <div id="fileListContainer">
@@ -1193,6 +1199,7 @@
       const trash = data.trash?.length || 0;
       const shared = data.shared?.length || 0;
       const orphan = data.orphan?.length || 0;
+      const pub = data.public?.length || 0;
       
       document.getElementById('statTotal').innerText = total.toLocaleString();
       document.getElementById('quickTotal').innerText = total.toLocaleString();
@@ -1205,6 +1212,7 @@
       document.getElementById('quickTrash').innerText = trash.toLocaleString();
       document.getElementById('statShared').innerText = shared.toLocaleString();
       document.getElementById('statOrphan').innerText = orphan.toLocaleString();
+      document.getElementById('statPublic').innerText = pub.toLocaleString();
       
       const totalSize = data.totalSize || 0;
       document.getElementById('quickSize').innerText = formatBytes(totalSize);
@@ -1360,6 +1368,7 @@
         case 'shared': return data.shared || [];
         case 'orphan': return data.orphan || [];
         case 'contentDupes': return data.contentDupes || [];
+        case 'public': return data.public || [];
         default: return [];
       }
     }
