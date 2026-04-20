@@ -954,6 +954,16 @@
               <option value="date-desc">Newest First</option>
               <option value="date-asc">Oldest First</option>
             </select>
+            <select class="select-box" id="sizeFilter" onchange="filterFiles()">
+              <option value="all">All Sizes</option>
+              <option value="10mb">< 10 MB</option>
+              <option value="100mb">< 100 MB</option>
+              <option value="500mb">< 500 MB</option>
+              <option value="1gb">< 1 GB</option>
+              <option value="gt1gb">> 1 GB</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="keepNewest()" title="Keep newest duplicate">Newest</button>
+            <button class="btn btn-secondary btn-sm" onclick="keepOldest()" title="Keep oldest duplicate">Oldest</button>
             <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>Delete Selected</button>
             <button class="btn btn-cyber" onclick="exportCSV()" id="exportBtn">Export CSV</button>
             <button class="btn btn-secondary" onclick="selectAllCategory()">Select All</button>
@@ -1290,6 +1300,17 @@
       const search = document.getElementById('searchBox').value.toLowerCase();
       if (search) files = files.filter(f => (f.name || '').toLowerCase().includes(search));
 
+      const sizeFilter = document.getElementById('sizeFilter')?.value || 'all';
+      if (sizeFilter !== 'all') {
+        const limits = { '10mb': 10*1024*1024, '100mb': 100*1024*1024, '500mb': 500*1024*1024, '1gb': 1024*1024*1024, 'gt1gb': 1024*1024*1024 };
+        const limit = limits[sizeFilter];
+        if (sizeFilter === 'gt1gb') {
+          files = files.filter(f => Number(f.size) > limit);
+        } else {
+          files = files.filter(f => Number(f.size) < limit);
+        }
+      }
+
       const displayFiles = files.slice(0, 500);
       
       displayFiles.forEach(file => {
@@ -1357,6 +1378,46 @@
       const btn = document.getElementById('deleteBtn');
       btn.disabled = selectedFiles.size === 0;
       btn.innerText = `Delete Selected (${selectedFiles.size})`;
+    }
+
+    function keepNewest() {
+      const files = getCategoryFiles('duplicates');
+      const fileMap = new Map();
+      files.forEach(f => {
+        const existing = fileMap.get(f.name) || [];
+        existing.push(f);
+        fileMap.set(f.name, existing);
+      });
+      const toDelete = [];
+      for (const [, items] of fileMap) {
+        if (items.length > 1) {
+          items.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
+          items.slice(1).forEach(f => toDelete.push(f.id));
+        }
+      }
+      selectedFiles = new Set(toDelete);
+      renderFiles();
+      updateDeleteBtn();
+    }
+
+    function keepOldest() {
+      const files = getCategoryFiles('duplicates');
+      const fileMap = new Map();
+      files.forEach(f => {
+        const existing = fileMap.get(f.name) || [];
+        existing.push(f);
+        fileMap.set(f.name, existing);
+      });
+      const toDelete = [];
+      for (const [, items] of fileMap) {
+        if (items.length > 1) {
+          items.sort((a, b) => new Date(a.modifiedTime) - new Date(b.modifiedTime));
+          items.slice(1).forEach(f => toDelete.push(f.id));
+        }
+      }
+      selectedFiles = new Set(toDelete);
+      renderFiles();
+      updateDeleteBtn();
     }
 
     function filterFiles() {
