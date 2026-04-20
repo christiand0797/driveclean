@@ -257,7 +257,30 @@ app.post('/api/files/delete', validateSession, async (req, res) => {
     );
     
     const success = results.filter(r => !r.error).length;
-    res.json({ message: `Moved ${success} files to trash.` });
+    res.json({ message: `Moved ${success} files to trash.`, fileIds });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/files/restore', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const oauth = await getAuthClient(sessionId);
+    const drive = google.drive({ version: 'v3', auth: oauth });
+    
+    const { fileIds } = req.body;
+    if (!fileIds || !Array.isArray(fileIds)) return res.status(400).json({ error: "Invalid file IDs" });
+
+    const results = await Promise.all(
+      fileIds.map(id => 
+        retryRequest(() => drive.files.update({ fileId: id, requestBody: { trashed: false } }))
+          .catch(e => ({ id, error: e.message }))
+      )
+    );
+    
+    const success = results.filter(r => !r.error).length;
+    res.json({ message: `Restored ${success} files.` });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

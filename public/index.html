@@ -1019,6 +1019,7 @@
             </select>
             <button class="btn btn-cyber" onclick="exportData('csv')" id="exportCsvBtn">CSV</button>
             <button class="btn btn-cyber" onclick="exportData('json')" id="exportJsonBtn">JSON</button>
+            <button class="btn btn-cyber" onclick="exportData('print')" id="exportPrintBtn">Print</button>
           </div>
 
           <div class="tabs">
@@ -1108,6 +1109,7 @@
     let currentTab = 'all';
     let currentJobId = null;
     let allFiles = [];
+    let recentlyDeleted = [];
 
     async function init() {
       const params = new URLSearchParams(window.location.search);
@@ -1623,6 +1625,14 @@ function selectAllCategory() {
       document.getElementById('deleteModalClose').classList.remove('hidden');
       document.getElementById('deleteModalText').innerText = `Complete! Deleted ${success} files.${failed > 0 ? ` ${failed} failed.` : ''}`;
       
+      recentlyDeleted = [...fileIds];
+      
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'btn btn-secondary';
+      undoBtn.style.marginTop = '15px';
+      undoBtn.innerText = 'Undo (Restore)';
+      undoBtn.onclick = () => restoreFiles(recentlyDeleted);
+      document.querySelector('#deleteModal .modal').appendChild(undoBtn);
       selectedFiles.clear();
       setTimeout(() => {
         startScan();
@@ -1640,6 +1650,24 @@ function selectAllCategory() {
       document.getElementById('deleteProcessed').innerText = '0';
       document.getElementById('deleteSuccess').innerText = '0';
       document.getElementById('deleteFailed').innerText = '0';
+      
+      const undoBtns = document.querySelectorAll('#deleteModal .modal button');
+      undoBtns.forEach(b => { if (b.innerText.includes('Undo')) b.remove(); });
+    }
+
+    async function restoreFiles(fileIds) {
+      if (!fileIds?.length) return;
+      try {
+        const res = await authFetch('/api/files/restore', {
+          method: 'POST',
+          body: JSON.stringify({ fileIds })
+        });
+        const data = await res.json();
+        alert(data.message || 'Restored');
+        closeDeleteModal();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
     }
 
     async function deleteFile(id) {
@@ -1678,6 +1706,23 @@ function selectAllCategory() {
         content = JSON.stringify(files, null, 2);
         mime = 'application/json';
         ext = 'json';
+      } else if (format === 'print') {
+        content = `<html><head><title>DriveClean Report</title>
+<style>body{font-family:sans-serif;padding:20px}
+h1{color:#9d4edd}.file{margin:8px 0;padding:8px;border-bottom:1px solid #eee}
+.name{font-weight:600}.meta{color:#666;font-size:12px}</style></head>
+<body><h1>DriveClean Report - ${currentTab}</h1>
+<p>Generated: ${new Date().toLocaleString()}</p>
+<p>Total: ${files.length} files</p>
+${files.map(f => `<div class="file"><div class="name">${f.name}</div><div class="meta">${f.size} - ${f.modifiedTime}</div></div>`).join('')}
+</body></html>`;
+        mime = 'text/html';
+        ext = 'html';
+        const win = window.open('', '_blank');
+        win.document.write(content);
+        win.document.close();
+        win.print();
+        return;
       } else {
         content = 'Name,Size,Modified,MIME Type\n';
         files.forEach(f => {
