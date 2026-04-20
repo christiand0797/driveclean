@@ -959,7 +959,7 @@
           <div>
             <button id="startScanBtn" class="btn btn-primary" onclick="startScan('drive')">Scan Drive</button>
             <button id="startGmailBtn" class="btn btn-primary" onclick="startScan('gmail')" style="background:var(--gradient-lime)">Scan Gmail</button>
-            <button id="startPhotosBtn" class="btn btn-primary" onclick="startScan('photos')" style="background:var(--gradient-cyan)">Scan Photos</button>
+            <button id="startPhotosBtn" class="btn btn-primary" onclick="startScan('photos')" style="background:var(--gradient-cyan)">Find Photos</button>
             <button id="cancelScanBtn" class="btn btn-secondary hidden" onclick="cancelScan()">Stop</button>
             <button class="btn btn-danger" onclick="emptyTrash()" id="emptyTrashBtn" disabled>Empty Trash</button>
           </div>
@@ -1269,6 +1269,10 @@
         
         if (scanData.total) {
           showResults();
+          document.getElementById('resultsSection').classList.remove('hidden');
+        } else if (msg.data && (msg.data.gmail || msg.data.photos)) {
+          document.getElementById('resultsSection').classList.add('hidden');
+          alert('Scan complete! Check stats at the top.');
         }
         toggleScanUI(false);
         updateStats();
