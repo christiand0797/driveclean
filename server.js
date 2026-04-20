@@ -458,15 +458,19 @@ async function runDriveScan(jobId, ws) {
     let pageToken = null;
     
     const nameMap = new Map();
+    const extMap = new Map();
     const largeFiles = [];
     const oldFiles = [];
     const emptyFiles = [];
     const trashFiles = [];
     const sharedFiles = [];
     const orphanFiles = [];
+    const mimeMap = new Map();
     
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    const folderSizeMap = new Map();
 
     job.stage = "Scanning Drive";
     pushUpdate(jobId, ws, job);
@@ -512,6 +516,12 @@ async function runDriveScan(jobId, ws) {
             if (f.owners && f.owners.length === 0) {
               orphanFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime });
             }
+
+            const ext = f.name.split('.').pop()?.toLowerCase() || 'none';
+            extMap.set(ext, (extMap.get(ext) || 0) + 1);
+            
+            const mimeCat = f.mimeType?.split('/')[0] || 'other';
+            mimeMap.set(mimeCat, (mimeMap.get(mimeCat) || 0) + 1);
           });
         }
       }
@@ -607,7 +617,9 @@ async function runDriveScan(jobId, ws) {
       trash: trashFiles.slice(0, 500),
       shared: sharedFiles.slice(0, 500),
       orphan: orphanFiles.slice(0, 500),
-      contentDupes: contentDupes.slice(0, 500)
+      contentDupes: contentDupes.slice(0, 500),
+      extensions: Array.from(extMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 20),
+      mimeTypes: Array.from(mimeMap.entries()).sort((a, b) => b[1] - a[1])
     };
 
     pushUpdate(jobId, ws, job);
