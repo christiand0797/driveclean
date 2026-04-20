@@ -263,6 +263,43 @@ app.post('/api/files/delete', validateSession, async (req, res) => {
   }
 });
 
+app.post('/api/trash/empty', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const oauth = await getAuthClient(sessionId);
+    const drive = google.drive({ version: 'v3', auth: oauth });
+    
+    log(`Emptying trash for session ${sessionId}`);
+    
+    let deletedCount = 0;
+    let pageToken = null;
+    
+    do {
+      const r = await retryRequest(() => drive.files.list({
+        pageSize: 100,
+        fields: 'nextPageToken,files(id)',
+        q: "trashed=true",
+        pageToken
+      }));
+      
+      const files = r.data.files || [];
+      if (files.length === 0) break;
+      
+      await Promise.all(files.map(f => 
+        retryRequest(() => drive.files.delete({ fileId: f.id }))
+          .catch(() => {})
+      ));
+      
+      deletedCount += files.length;
+      pageToken = r.data.nextPageToken;
+    } while (pageToken);
+    
+    res.json({ message: `Permanently deleted ${deletedCount} items.` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/gmail/clean', validateSession, async (req, res) => {
   try {
     const sessionId = req.headers['x-session'];
@@ -424,6 +461,7 @@ async function runDriveScan(jobId, ws) {
     const largeFiles = [];
     const oldFiles = [];
     const emptyFiles = [];
+    const trashFiles = [];
     
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
@@ -466,6 +504,34 @@ async function runDriveScan(jobId, ws) {
       pageToken = r.data.nextPageToken;
     } while (pageToken);
 
+    job.stage = "Scanning Trash";
+    job.progress = 85;
+    pushUpdate(jobId, ws, job);
+
+    let trashPageToken = null;
+    do {
+      if (job.cancel) return;
+      
+      const r = await retryRequest(() => drive.files.list({
+        pageSize: 1000,
+        fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime)',
+        q: "trashed=true",
+        pageToken: trashPageToken
+      }));
+      
+      const files = r.data.files || [];
+      files.forEach(f => {
+        const size = Number(f.size || 0);
+        trashFiles.push({ ...f, trashed: true });
+      });
+      
+      job.progress = Math.min(95, 85 + (trashFiles.length / 5000) * 10);
+      job.stage = `Found ${trashFiles.length} trashed items`;
+      pushUpdate(jobId, ws, job);
+      
+      trashPageToken = r.data.nextPageToken;
+    } while (trashPageToken);
+
     job.stage = "Processing";
     job.progress = 80;
     pushUpdate(jobId, ws, job);
@@ -487,7 +553,8 @@ async function runDriveScan(jobId, ws) {
       duplicates: duplicateNames.slice(0, 100),
       large: largeFiles.slice(0, 500),
       old: oldFiles.slice(0, 500),
-      empty: emptyFiles.slice(0, 500)
+      empty: emptyFiles.slice(0, 500),
+      trash: trashFiles.slice(0, 500)
     };
 
     pushUpdate(jobId, ws, job);
