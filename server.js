@@ -1010,14 +1010,13 @@ async function runDriveScan(jobId, ws) {
       const hasParents = file.parents.length > 0;
       if (!hasParents) {
         categorySets.orphan.push(file);
-        categorySets.hidden.push(file);
       } else {
         for (const parentId of file.parents) {
           childCountMap.set(parentId, (childCountMap.get(parentId) || 0) + 1);
         }
       }
 
-      if (file.name.startsWith('.') && hasParents) {
+      if (file.name.startsWith('.')) {
         categorySets.hidden.push(file);
       }
 
