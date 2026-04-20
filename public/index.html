@@ -873,6 +873,9 @@
               <div class="quick-stat-label">Newest</div>
             </div>
           </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--text-dim)">
+            <span id="lastScanTime">No scan yet</span>
+          </div>
         </div>
       </div>
 
@@ -1255,6 +1258,8 @@
       history.unshift({ timestamp: Date.now(), total, large, dupes: data.duplicates?.length || 0, old: data.old?.length || 0, trash: data.trash?.length || 0 });
       if (history.length > 10) history.pop();
       localStorage.setItem('scanHistory', JSON.stringify(history));
+      document.getElementById('lastScanTime').innerText = `Last scan: ${new Date().toLocaleString()}`;
+      
       const dupes = data.duplicates?.length || 0;
       const old = data.old?.length || 0;
       const empty = data.empty?.length || 0;
