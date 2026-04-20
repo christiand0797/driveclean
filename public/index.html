@@ -945,6 +945,11 @@
           <div class="stat-number" id="statPublic">0</div>
           <div class="stat-label">Public</div>
         </div>
+        <div class="stat-card" onclick="showCategory('hidden')" data-category="hidden">
+          <div class="stat-icon">🔐</div>
+          <div class="stat-number" id="statHidden">0</div>
+          <div class="stat-label">Hidden</div>
+        </div>
       </div>
 
 <div class="card">
@@ -1027,12 +1032,9 @@
             <button class="tab" onclick="showTab('large')" data-tab="large">Large</button>
             <button class="tab" onclick="showTab('duplicates')" data-tab="duplicates">Duplicates</button>
             <button class="tab" onclick="showTab('old')" data-tab="old">Old</button>
-            <button class="tab" onclick="showTab('empty')" data-tab="empty">Empty</button>
+<button class="tab" onclick="showTab('empty')" data-tab="empty">Empty</button>
+            <button class="tab" onclick="showTab('hidden')" data-tab="hidden">Hidden</button>
             <button class="tab" onclick="showTab('trash')" data-tab="trash">Trash</button>
-            <button class="tab" onclick="showTab('shared')" data-tab="shared">Shared</button>
-            <button class="tab" onclick="showTab('orphan')" data-tab="orphan">Orphaned</button>
-            <button class="tab" onclick="showTab('contentDupes')" data-tab="contentDupes">True Dupes</button>
-            <button class="tab" onclick="showTab('public')" data-tab="public">Public</button>
           </div>
 
           <div id="fileListContainer">
@@ -1168,7 +1170,8 @@
       else if (e.code === 'Digit3') showTab('duplicates');
       else if (e.code === 'Digit4') showTab('old');
       else if (e.code === 'Digit5') showTab('empty');
-      else if (e.code === 'Digit6') showTab('trash');
+      else if (e.code === 'Digit6') showTab('hidden');
+      else if (e.code === 'Digit7') showTab('trash');
     }
 
     async function login() {
@@ -1294,10 +1297,11 @@
       localStorage.setItem('scanHistory', JSON.stringify(history));
       document.getElementById('lastScanTime').innerText = `Last scan: ${new Date().toLocaleString()}`;
       
-      const dupes = data.duplicates?.length || 0;
+const dupes = data.duplicates?.length || 0;
       const old = data.old?.length || 0;
       const empty = data.empty?.length || 0;
       const trash = data.trash?.length || 0;
+      const hidden = data.hidden?.length || 0;
       const shared = data.shared?.length || 0;
       const orphan = data.orphan?.length || 0;
       const pub = data.public?.length || 0;
@@ -1311,9 +1315,10 @@
       document.getElementById('statEmpty').innerText = empty.toLocaleString();
       document.getElementById('statTrash').innerText = trash.toLocaleString();
       document.getElementById('quickTrash').innerText = trash.toLocaleString();
-      document.getElementById('statShared').innerText = shared.toLocaleString();
-      document.getElementById('statOrphan').innerText = orphan.toLocaleString();
-      document.getElementById('statPublic').innerText = pub.toLocaleString();
+      document.getElementById('statShared').innerText = shared?.toLocaleString() || 0;
+      document.getElementById('statOrphan').innerText = orphan?.toLocaleString() || 0;
+      document.getElementById('statPublic').innerText = pub?.toLocaleString() || 0;
+      document.getElementById('statHidden').innerText = hidden?.toLocaleString() || 0;
       
       const totalSize = data.totalSize || 0;
       document.getElementById('quickSize').innerText = formatBytes(totalSize);
@@ -1495,10 +1500,7 @@
         case 'old': return data.old || [];
         case 'empty': return data.empty || [];
         case 'trash': return data.trash || [];
-        case 'shared': return data.shared || [];
-        case 'orphan': return data.orphan || [];
-        case 'contentDupes': return data.contentDupes || [];
-        case 'public': return data.public || [];
+        case 'hidden': return data.hidden || [];
         default: return [];
       }
     }

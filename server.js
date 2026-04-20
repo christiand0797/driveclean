@@ -165,6 +165,8 @@ app.get('/api/auth/url', (req, res) => {
     prompt: 'consent',
     scope: [
       'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/drive.metadata',
       'https://www.googleapis.com/auth/gmail.modify',
       'https://www.googleapis.com/auth/photoslibrary.readonly',
       'https://www.googleapis.com/auth/userinfo.email',
@@ -484,6 +486,7 @@ async function runDriveScan(jobId, ws) {
     const largeFiles = [];
     const oldFiles = [];
     const emptyFiles = [];
+    const hiddenFiles = [];
     const trashFiles = [];
     const mimeMap = new Map();
     
@@ -521,6 +524,10 @@ job.stage = "Scanning Drive";
 
         if (size > 100 * 1024 * 1024) largeFiles.push(f);
         if (size === 0) emptyFiles.push(f);
+
+        if (f.name.startsWith('.')) {
+          hiddenFiles.push(f);
+        }
 
         if (f.modifiedTime && new Date(f.modifiedTime) < oneYearAgo) {
           oldFiles.push(f);
@@ -591,6 +598,7 @@ job.stage = "Scanning Drive";
       large: largeFiles.slice(0, 500),
       old: oldFiles.slice(0, 500),
       empty: emptyFiles.slice(0, 500),
+      hidden: hiddenFiles.slice(0, 500),
       trash: trashFiles.slice(0, 500),
       extensions: Array.from(extMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 20),
       mimeTypes: Array.from(mimeMap.entries()).sort((a, b) => b[1] - a[1])
