@@ -1,11 +1,18 @@
 {
   "name": "driveclean",
-  "version": "1.0.0",
-  "description": "Clean your Google Drive & Gmail automatically",
+  "version": "2.0.0",
+  "description": "Ultimate Google Drive, Photos & Gmail cleanup tool with AI-powered analysis",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "keywords": [
+    "google-drive",
+    "gmail",
+    "cleanup",
+    "duplicate-finder",
+    "file-manager"
+  ],
   "dependencies": {
     "crypto-js": "^4.2.0",
     "dotenv": "^16.3.1",
@@ -13,5 +20,14 @@
     "googleapis": "^128.0.0",
     "uuid": "^9.0.0",
     "ws": "^8.14.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "homepage": "https://driveclean.onrender.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/christiand0797/driveclean.git"
   }
 }
