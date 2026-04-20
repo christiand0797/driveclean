@@ -3,94 +3,808 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DriveClean - Ultimate Google Drive Cleaner</title>
+  <title>DriveClean Pro</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    :root { --primary: #4285f4; --danger: #ea4335; --success: #34a853; --warning: #fbbc04; --bg: #f8f9fa; --card: #fff; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); margin: 0; color: #333; }
-    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-card: #12121a;
+      --bg-elevated: #1a1a25;
+      --primary: #9d4edd;
+      --primary-glow: #bf5eee;
+      --secondary: #00ff9f;
+      --secondary-glow: #5affa3;
+      --cyan: #00f5ff;
+      --cyan-dim: #00a8b3;
+      --purple: #b5179e;
+      --danger: #ff0055;
+      --danger-dim: #cc0044;
+      --warning: #ffbe0b;
+      --text: #e0e0e0;
+      --text-dim: #888;
+      --border: #2a2a3a;
+      --gradient-cyber: linear-gradient(135deg, var(--primary) 0%, var(--purple) 100%);
+      --gradient-cyber-glow: linear-gradient(135deg, var(--primary-glow) 0%, var(--primary) 100%);
+      --gradient-lime: linear-gradient(135deg, var(--secondary) 0%, #00cc7a 100%);
+      --gradient-cyan: linear-gradient(135deg, var(--cyan) 0%, var(--cyan-dim) 100%);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     
-    header { background: var(--card); padding: 15px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; }
-    .header-content { display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto; padding: 0 20px; }
-    .logo { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
-    .user-info { display: flex; align-items: center; gap: 15px; }
+    body {
+      font-family: 'Oxanium', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: 
+        radial-gradient(ellipse at 20% 20%, rgba(157,78,221,0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(0,255,159,0.1) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(0,245,255,0.05) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
     
-    .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; transition: 0.2s; font-size: 14px; }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-danger { background: var(--danger); color: white; }
-    .btn-success { background: var(--success); color: white; }
-    .btn-secondary { background: #e0e0e0; color: #333; }
-    .btn:hover { opacity: 0.9; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    header {
+      background: rgba(18,18,26,0.9);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 15px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
 
-    #loginSection { text-align: center; padding: 100px 20px; }
-    #loginSection h1 { font-size: 3rem; margin-bottom: 10px; }
-    #loginSection p { color: #666; margin-bottom: 30px; font-size: 1.2rem; }
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
 
-    .card { background: var(--card); border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .storage-bar { height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden; margin: 15px 0; }
-    .storage-used { height: 100%; background: linear-gradient(90deg, var(--primary), var(--success)); transition: width 0.5s; }
-    
-    .progress-container { display: none; text-align: center; padding: 40px; }
-    .progress-bar { height: 10px; background: #e0e0e0; border-radius: 5px; margin: 20px 0; overflow: hidden; }
-    .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
-    
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-    .stat-card { background: var(--card); border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-    .stat-card.active { border: 2px solid var(--primary); }
-    .stat-icon { font-size: 2.5rem; margin-bottom: 10px; }
-    .stat-number { font-size: 1.8rem; font-weight: bold; color: var(--primary); }
-    .stat-label { color: #666; font-size: 0.9rem; }
+    .logo {
+      font-size: 1.6rem;
+      font-weight: 700;
+      background: var(--gradient-cyber);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 0 30px rgba(157,78,221,0.5);
+      letter-spacing: 2px;
+    }
 
-    .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #eee; overflow-x: auto; }
-    .tab { padding: 12px 20px; cursor: pointer; background: none; border: none; font-size: 14px; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap; }
-    .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+    .logo span { color: var(--secondary); }
 
-    .toolbar { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center; }
-    .search-box { flex: 1; min-width: 200px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-    .select-box { padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+    .user-info { display: flex; align-items: center; gap: 12px; }
 
-    .file-table { width: 100%; border-collapse: collapse; }
-    .file-table th { text-align: left; padding: 12px; background: #f5f5f5; border-bottom: 2px solid #eee; font-weight: 600; font-size: 13px; }
-    .file-table td { padding: 12px; border-bottom: 1px solid #eee; }
-    .file-table tr:hover { background: #f9f9f9; }
-    .file-table input[type="checkbox"] { transform: scale(1.2); }
-    .file-icon { font-size: 1.5rem; margin-right: 10px; }
-    .file-name { font-weight: 500; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .file-size { color: #666; }
-    .file-date { color: #999; font-size: 13px; }
-    .file-actions { display: flex; gap: 5px; }
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      font-size: 14px;
+      font-family: 'Oxanium', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .btn-primary {
+      background: var(--gradient-cyber);
+      color: white;
+      box-shadow: 0 4px 20px rgba(157,78,221,0.4);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 30px rgba(157,78,221,0.6);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+      box-shadow: 0 4px 20px rgba(255,0,85,0.4);
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 30px rgba(255,0,85,0.6);
+    }
+
+    .btn-success {
+      background: var(--gradient-lime);
+      color: #0a0a0f;
+      box-shadow: 0 4px 20px rgba(0,255,159,0.4);
+    }
+
+    .btn-secondary {
+      background: var(--bg-elevated);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--primary);
+      box-shadow: 0 0 20px rgba(157,78,221,0.3);
+    }
+
+    .btn-cyber {
+      background: transparent;
+      color: var(--cyan);
+      border: 1px solid var(--cyan);
+      box-shadow: 0 0 15px rgba(0,245,255,0.2);
+    }
+
+    .btn-cyber:hover {
+      background: var(--cyan);
+      color: var(--bg-dark);
+      box-shadow: 0 0 30px rgba(0,245,255,0.5);
+    }
+
+    .btn:hover { opacity: 1; transform: translateY(-2px); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-sm { padding: 6px 14px; font-size: 11px; }
+
+    .btn-icon { padding: 8px 12px; }
+    .btn-icon svg { width: 18px; height: 18px; }
+
+    #loginSection {
+      text-align: center;
+      padding: 120px 20px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #loginSection h1 {
+      font-size: 4rem;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, var(--primary), var(--cyan), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    #loginSection .tagline {
+      color: var(--text-dim);
+      font-size: 1.3rem;
+      margin-bottom: 40px;
+      max-width: 600px;
+    }
+
+    .login-features {
+      display: flex;
+      gap: 30px;
+      margin-bottom: 50px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .login-feature {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+    }
+
+    .login-feature svg { color: var(--secondary); }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 30px rgba(0,0,0,0.3);
+    }
+
+    .storage-bar {
+      height: 24px;
+      background: var(--bg-elevated);
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 20px 0;
+      position: relative;
+      border: 1px solid var(--border);
+    }
+
+    .storage-used {
+      height: 100%;
+      background: var(--gradient-cyber);
+      border-radius: 12px;
+      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+
+    .storage-used::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      animation: shimmer 2s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .progress-container {
+      display: none;
+      text-align: center;
+      padding: 60px 40px;
+      position: relative;
+    }
+
+    .progress-container::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 200px;
+      height: 200px;
+      background: var(--primary);
+      filter: blur(100px);
+      opacity: 0.2;
+      pointer-events: none;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: var(--bg-elevated);
+      border-radius: 4px;
+      margin: 30px 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--gradient-cyber);
+      width: 0%;
+      transition: width 0.3s;
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .progress-pulse {
+      position: absolute;
+      right: 0; top: -4px; bottom: -4px;
+      width: 4px;
+      background: white;
+      border-radius: 2px;
+      box-shadow: 0 0 20px white;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: var(--gradient-cyber);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--primary);
+      box-shadow: 0 8px 40px rgba(157,78,221,0.3);
+    }
+
+    .stat-card:hover::before { opacity: 1; }
+
+    .stat-card.active {
+      border-color: var(--primary);
+      box-shadow: 0 0 30px rgba(157,78,221,0.4), inset 0 0 30px rgba(157,78,221,0.1);
+    }
+
+    .stat-card.large { grid-column: span 2; }
+    .stat-card.large:hover { transform: scale(1.02); }
+
+    .stat-icon {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      filter: drop-shadow(0 0 10px currentColor);
+    }
+
+    .stat-card:nth-child(1) .stat-icon { color: var(--cyan); }
+    .stat-card:nth-child(2) .stat-icon { color: var(--danger); }
+    .stat-card:nth-child(3) .stat-icon { color: var(--warning); }
+    .stat-card:nth-child(4) .stat-icon { color: var(--secondary); }
+    .stat-card:nth-child(5) .stat-icon { color: var(--purple); }
+    .stat-card:nth-child(6) .stat-icon { color: var(--primary-glow); }
+    .stat-card:nth-child(7) .stat-icon { color: #ff6b6b; }
+    .stat-card:nth-child(8) .stat-icon { color: var(--text-dim); }
+
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text);
+      text-shadow: 0 0 20px rgba(157,78,221,0.5);
+    }
+
+    .stat-label {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      padding-bottom: 1px;
+    }
+
+    .tab {
+      padding: 14px 24px;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      font-size: 13px;
+      color: var(--text-dim);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      white-space: nowrap;
+      transition: all 0.2s;
+      font-family: 'Oxanium', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .tab:hover { color: var(--text); }
+    .tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+      text-shadow: 0 0 20px rgba(157,78,221,0.5);
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .search-box {
+      flex: 1;
+      min-width: 200px;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      background: var(--bg-elevated);
+      color: var(--text);
+      font-family: 'Oxanium', sans-serif;
+      transition: all 0.2s;
+    }
+
+    .search-box:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 20px rgba(157,78,221,0.3);
+    }
+
+    .search-box::placeholder { color: var(--text-dim); }
+
+    .select-box {
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      background: var(--bg-elevated);
+      color: var(--text);
+      font-family: 'Oxanium', sans-serif;
+      cursor: pointer;
+    }
+
+    .select-box:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .file-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    .file-table th {
+      text-align: left;
+      padding: 14px 12px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      position: sticky;
+      top: 0;
+    }
+
+    .file-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .file-table tr {
+      transition: all 0.2s;
+    }
+
+    .file-table tbody tr:hover {
+      background: rgba(157,78,221,0.1);
+    }
+
+    .file-table input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .file-checkbox { width: 40px; }
+    .file-icon-col { width: 50px; }
+    .file-size-col { width: 100px; text-align: right; }
+    .file-date-col { width: 120px; }
+    .file-actions-col { width: 120px; text-align: right; }
+
+    .file-icon {
+      font-size: 1.4rem;
+      margin-right: 8px;
+    }
+
+    .file-name {
+      font-weight: 500;
+      max-width: 350px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-size, .file-date {
+      color: var(--text-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .file-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-danger { background: rgba(255,0,85,0.2); color: var(--danger); }
+    .badge-warning { background: rgba(255,190,11,0.2); color: var(--warning); }
+    .badge-success { background: rgba(0,255,159,0.2); color: var(--secondary); }
 
     .hidden { display: none !important; }
-    .text-danger { color: var(--danger); }
-    .text-success { color: var(--success); }
 
-    .empty-state { text-align: center; padding: 60px 20px; color: #999; }
-    .empty-state h2 { font-size: 2rem; margin-bottom: 10px; }
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-dim);
+    }
+
+    .empty-state h2 {
+      font-size: 1.8rem;
+      margin-bottom: 12px;
+      background: var(--gradient-cyber);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .keyboard-shortcuts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .key-hint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-dim);
+      font-size: 12px;
+    }
+
+    .key {
+      padding: 3px 8px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--cyan);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(10px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 30px;
+      border: 1px solid var(--border);
+      max-width: 500px;
+      width: 90%;
+      transform: scale(0.9);
+      transition: transform 0.3s;
+    }
+
+    .modal-overlay.active .modal { transform: scale(1); }
+
+    .modal h3 {
+      font-size: 1.4rem;
+      margin-bottom: 15px;
+      color: var(--primary);
+    }
+
+    .modal-progress {
+      margin: 20px 0;
+    }
+
+    .modal-progress-bar {
+      height: 6px;
+      background: var(--bg-elevated);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .modal-progress-fill {
+      height: 100%;
+      background: var(--gradient-lime);
+      transition: width 0.3s;
+    }
+
+    .modal-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin: 20px 0;
+    }
+
+    .modal-stat {
+      text-align: center;
+    }
+
+    .modal-stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--secondary);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .modal-stat-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    .scanner-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+
+    .scanner-header h3 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.3rem;
+    }
+
+    .scanner-header h3 svg {
+      color: var(--cyan);
+      animation: spin 2s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .scan-options {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .scan-option {
+      padding: 8px 16px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Oxanium', sans-serif;
+    }
+
+    .scan-option:hover {
+      border-color: var(--primary);
+    }
+
+    .scan-option.active {
+      background: rgba(157,78,221,0.2);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .quick-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .quick-stat {
+      background: var(--bg-elevated);
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .quick-stat-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .quick-stat:nth-child(1) .quick-stat-value { color: var(--cyan); }
+    .quick-stat:nth-child(2) .quick-stat-value { color: var(--danger); }
+    .quick-stat:nth-child(3) .quick-stat-value { color: var(--warning); }
+    .quick-stat:nth-child(4) .quick-stat-value { color: var(--secondary); }
+
+    .quick-stat-label {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 900px) {
+      .quick-stats { grid-template-columns: repeat(2, 1fr); }
+      .stat-card.large { grid-column: span 1; }
+    }
 
     @media (max-width: 768px) {
       .file-table { display: block; }
       .file-table thead { display: none; }
       .file-table, .file-table tbody, .file-table tr, .file-table td { display: block; }
-      .file-table tr { padding: 15px 0; border-bottom: 2px solid #eee; }
-      .file-table td { padding: 5px 0; }
+      .file-table tr { padding: 15px 0; border-bottom: 2px solid var(--border); }
+      .file-table td { padding: 8px 0; }
+      .file-checkbox { display: none; }
+      .file-name { max-width: 100%; }
     }
   </style>
 </head>
 <body>
 
   <div id="loginSection">
-    <h1>🧹 DriveClean</h1>
-    <p>The ultimate Google Drive cleanup tool. Find duplicates, large files, old files and more.</p>
-    <button class="btn btn-primary" onclick="login()">Connect Google Drive</button>
+    <svg style="width:80px;height:80px;color:var(--primary);margin-bottom:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
+      <path d="M3 3v5h5"/>
+      <path d="M12 7v5l4 2"/>
+    </svg>
+    <h1>DRIVECLEAN<span>PRO</span></h1>
+    <p class="tagline">Next-gen Google Drive cleanup with AI-powered analysis. Find duplicates, large files, old files, and more with advanced content-based detection.</p>
+    <button class="btn btn-primary" onclick="login()" style="padding:16px 40px;font-size:16px">
+      <svg style="width:20px;height:20px;vertical-align:middle;margin-right:10px" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.96 20.53 7.7 23 12 23z"/>
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.96 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Connect Google Account
+    </button>
+    <div class="login-features" style="margin-top:50px">
+      <div class="login-feature">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        <span>Fast Scanning</span>
+      </div>
+      <div class="login-feature">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15h6"/></svg>
+        <span>Content Hashing</span>
+      </div>
+      <div class="login-feature">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
+        <span>Smart Duplicates</span>
+      </div>
+      <div class="login-feature">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M9 12l2 2 4-4"/></svg>
+        <span>Batch Delete</span>
+      </div>
+    </div>
   </div>
 
   <header id="mainHeader" class="hidden">
     <div class="header-content">
-      <div class="logo">🧹 DriveClean</div>
+      <div class="logo">DRIVECLEAN<span>PRO</span></div>
       <div class="user-info">
-        <button class="btn btn-sm btn-secondary" onclick="refreshStorage()">↻ Refresh</button>
+        <div style="color:var(--text-dim);font-size:13px">
+          <span id="userEmail">Loading...</span>
+        </div>
+        <button class="btn btn-sm btn-secondary btn-icon" onclick="refreshStorage()" title="Refresh Storage">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
         <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
       </div>
     </div>
@@ -100,105 +814,156 @@
     <div id="dashboard" class="hidden">
       
       <div class="card">
-        <h3>📊 Storage Overview</h3>
-        <div class="storage-bar"><div id="storageUsedBar" class="storage-used"></div></div>
-        <p id="storageText">Calculating...</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px">
+          <div style="flex:1;min-width:200px">
+            <h3 style="margin-bottom:8px;color:var(--cyan);font-size:14px;text-transform:uppercase;letter-spacing:2px">Storage Usage</h3>
+            <div class="storage-bar">
+              <div id="storageUsedBar" class="storage-used" style="width:0%"></div>
+            </div>
+            <p id="storageText" style="color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-size:13px">Calculating...</p>
+          </div>
+          <div class="quick-stats">
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="quickTotal">0</div>
+              <div class="quick-stat-label">Total Files</div>
+            </div>
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="quickSize">0 GB</div>
+              <div class="quick-stat-label">Used</div>
+            </div>
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="quickDupes">0</div>
+              <div class="quick-stat-label">Duplicates</div>
+            </div>
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="quickTrash">0</div>
+              <div class="quick-stat-label">In Trash</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="stats-grid">
-        <div class="stat-card" onclick="showCategory('all')">
-          <div class="stat-icon">📁</div>
+        <div class="stat-card large" onclick="showCategory('all')" data-category="all">
+          <div class="stat-icon">📊</div>
           <div class="stat-number" id="statTotal">0</div>
           <div class="stat-label">Total Files</div>
         </div>
-        <div class="stat-card" onclick="showCategory('large')">
+        <div class="stat-card" onclick="showCategory('large')" data-category="large">
           <div class="stat-icon">🐘</div>
           <div class="stat-number" id="statLarge">0</div>
-          <div class="stat-label">Large Files (>100MB)</div>
+          <div class="stat-label">Large Files</div>
         </div>
-        <div class="stat-card" onclick="showCategory('duplicates')">
-          <div class="stat-icon">📋</div>
+        <div class="stat-card" onclick="showCategory('duplicates')" data-category="duplicates">
+          <div class="stat-icon">📑</div>
           <div class="stat-number" id="statDupes">0</div>
           <div class="stat-label">Duplicates</div>
         </div>
-        <div class="stat-card" onclick="showCategory('old')">
+        <div class="stat-card" onclick="showCategory('old')" data-category="old">
           <div class="stat-icon">📅</div>
           <div class="stat-number" id="statOld">0</div>
-          <div class="stat-label">Old Files (>1yr)</div>
+          <div class="stat-label">Old Files</div>
         </div>
-        <div class="stat-card" onclick="showCategory('empty')">
-          <div class="stat-icon">📄</div>
+        <div class="stat-card" onclick="showCategory('empty')" data-category="empty">
+          <div class="stat-icon">📭</div>
           <div class="stat-number" id="statEmpty">0</div>
           <div class="stat-label">Empty Files</div>
         </div>
-        <div class="stat-card" onclick="showCategory('images')">
-          <div class="stat-icon">🖼️</div>
-          <div class="stat-number" id="statImages">0</div>
-          <div class="stat-label">Images</div>
-        </div>
-        <div class="stat-card" onclick="showCategory('videos')">
-          <div class="stat-icon">🎬</div>
-          <div class="stat-number" id="statVideos">0</div>
-          <div class="stat-label">Videos</div>
-        </div>
-        <div class="stat-card" onclick="showCategory('trash')">
+        <div class="stat-card" onclick="showCategory('trash')" data-category="trash">
           <div class="stat-icon">🗑️</div>
           <div class="stat-number" id="statTrash">0</div>
-          <div class="stat-label">In Trash</div>
+          <div class="stat-label">Trash</div>
+        </div>
+        <div class="stat-card" onclick="showCategory('shared')" data-category="shared">
+          <div class="stat-icon">🔗</div>
+          <div class="stat-number" id="statShared">0</div>
+          <div class="stat-label">Shared</div>
+        </div>
+        <div class="stat-card" onclick="showCategory('orphan')" data-category="orphan">
+          <div class="stat-icon">👻</div>
+          <div class="stat-number" id="statOrphan">0</div>
+          <div class="stat-label">Orphaned</div>
         </div>
       </div>
 
       <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-          <h3>🔍 Scanner</h3>
+        <div class="scanner-header">
+          <h3>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35"/>
+            </svg>
+            Deep Scanner
+          </h3>
           <div>
-            <button id="startScanBtn" class="btn btn-primary" onclick="startScan()">Start Deep Scan</button>
+            <button id="startScanBtn" class="btn btn-primary" onclick="startScan()">Start Scan</button>
             <button id="cancelScanBtn" class="btn btn-secondary hidden" onclick="cancelScan()">Stop</button>
-            <button class="btn btn-success" onclick="emptyTrash()" id="emptyTrashBtn" disabled>Empty Trash</button>
+            <button class="btn btn-danger" onclick="emptyTrash()" id="emptyTrashBtn" disabled>Empty Trash</button>
           </div>
         </div>
         
+        <div class="scan-options">
+          <div class="scan-option active" data-scan="drive">Drive</div>
+          <div class="scan-option" data-scan="gmail">Gmail Cleanup</div>
+          <div class="scan-option" data-scan="photos">Photos</div>
+          <div class="scan-option" data-scan="content">Content Hash</div>
+        </div>
+        
         <div id="progressSection" class="progress-container">
-          <h2 id="progressStage">Ready to scan</h2>
-          <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
-          <p id="progressText">Click "Start Deep Scan" to analyze your entire Drive.</p>
+          <h2 id="progressStage" style="font-size:1.5rem;margin-bottom:10px;color:var(--cyan)">Initializing...</h2>
+          <div class="progress-bar">
+            <div id="progressFill" class="progress-fill" style="width:0%">
+              <div class="progress-pulse"></div>
+            </div>
+          </div>
+          <p id="progressText" style="color:var(--text-dim)">Preparing scanner...</p>
+          <div class="keyboard-shortcuts" style="justify-content:center;margin-top:30px">
+            <div class="key-hint"><span class="key">Space</span> Start/Stop</div>
+            <div class="key-hint"><span class="key">A</span> Select All</div>
+            <div class="key-hint"><span class="key">Del</span> Delete</div>
+            <div class="key-hint"><span class="key">Esc</span> Cancel</div>
+          </div>
         </div>
       </div>
 
       <div id="resultsSection" class="hidden">
         <div class="card">
           <div class="toolbar">
-            <input type="text" class="search-box" id="searchBox" placeholder="Search files..." oninput="filterFiles()">
+            <input type="text" class="search-box" id="searchBox" placeholder="Search files by name..." oninput="filterFiles()">
             <select class="select-box" id="sortSelect" onchange="sortFiles()">
               <option value="name">Sort by Name</option>
-              <option value="size">Sort by Size</option>
-              <option value="date">Sort by Date</option>
+              <option value="size-desc">Largest First</option>
+              <option value="size-asc">Smallest First</option>
+              <option value="date-desc">Newest First</option>
+              <option value="date-asc">Oldest First</option>
             </select>
-            <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn">Delete Selected (0)</button>
-            <button class="btn btn-secondary" onclick="exportCSV()" id="exportBtn">Export CSV</button>
+            <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>Delete Selected</button>
+            <button class="btn btn-cyber" onclick="exportCSV()" id="exportBtn">Export CSV</button>
+            <button class="btn btn-secondary" onclick="selectAllCategory()">Select All</button>
           </div>
 
           <div class="tabs">
-            <button class="tab active" onclick="showTab('all')">All Files</button>
-            <button class="tab" onclick="showTab('large')">Large Files</button>
-            <button class="tab" onclick="showTab('duplicates')">Duplicates</button>
-            <button class="tab" onclick="showTab('old')">Old Files</button>
-            <button class="tab" onclick="showTab('empty')">Empty Files</button>
-            <button class="tab" onclick="showTab('images')">Images</button>
-            <button class="tab" onclick="showTab('videos')">Videos</button>
-            <button class="tab" onclick="showTab('trash')">Trash</button>
+            <button class="tab active" onclick="showTab('all')" data-tab="all">All</button>
+            <button class="tab" onclick="showTab('large')" data-tab="large">Large</button>
+            <button class="tab" onclick="showTab('duplicates')" data-tab="duplicates">Duplicates</button>
+            <button class="tab" onclick="showTab('old')" data-tab="old">Old</button>
+            <button class="tab" onclick="showTab('empty')" data-tab="empty">Empty</button>
+            <button class="tab" onclick="showTab('trash')" data-tab="trash">Trash</button>
+            <button class="tab" onclick="showTab('shared')" data-tab="shared">Shared</button>
+            <button class="tab" onclick="showTab('orphan')" data-tab="orphan">Orphaned</button>
+            <button class="tab" onclick="showTab('contentDupes')" data-tab="contentDupes">True Dupes</button>
           </div>
 
           <div id="fileListContainer">
             <table class="file-table">
               <thead>
                 <tr>
-                  <th style="width:40px;"><input type="checkbox" onchange="toggleAll(this)"></th>
-                  <th style="width:50px;"></th>
+                  <th class="file-checkbox"><input type="checkbox" onchange="toggleAll(this)"></th>
+                  <th class="file-icon-col"></th>
                   <th>Name</th>
-                  <th style="width:100px;">Size</th>
-                  <th style="width:120px;">Modified</th>
-                  <th style="width:100px;">Actions</th>
+                  <th class="file-size-col">Size</th>
+                  <th class="file-date-col">Modified</th>
+                  <th class="file-actions-col">Actions</th>
                 </tr>
               </thead>
               <tbody id="fileTableBody"></tbody>
@@ -206,12 +971,39 @@
           </div>
 
           <div id="emptyState" class="empty-state hidden">
-            <h2>✨ No files found</h2>
-            <p>Either no files match this category or you haven't run a scan yet.</p>
+            <h2>No files found</h2>
+            <p>Run a scan to analyze your Drive, or no files match this category.</p>
           </div>
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <div id="deleteModal" class="modal-overlay">
+    <div class="modal">
+      <h3>🗑️ Deleting Files</h3>
+      <p id="deleteModalText" style="color:var(--text-dim)">Preparing...</p>
+      <div class="modal-progress">
+        <div class="modal-progress-bar">
+          <div id="deleteProgressFill" class="modal-progress-fill" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="modal-stats">
+        <div class="modal-stat">
+          <div class="modal-stat-value" id="deleteProcessed">0</div>
+          <div class="modal-stat-label">Processed</div>
+        </div>
+        <div class="modal-stat">
+          <div class="modal-stat-value" id="deleteSuccess">0</div>
+          <div class="modal-stat-label">Success</div>
+        </div>
+        <div class="modal-stat">
+          <div class="modal-stat-value" id="deleteFailed">0</div>
+          <div class="modal-stat-label">Failed</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary" onclick="closeDeleteModal()" style="width:100%" id="deleteModalClose">Close</button>
     </div>
   </div>
 
@@ -238,8 +1030,32 @@
         if (storedSession) {
           currentSession = storedSession;
           showDashboard();
+        }
+      }
+      
+      document.addEventListener('keydown', handleKeyboard);
+    }
+
+    function handleKeyboard(e) {
+      if (e.target.tagName === 'INPUT') return;
+      
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (document.getElementById('startScanBtn').classList.contains('hidden')) {
+          cancelScan();
         } else {
-          document.getElementById('loginSection').style.display = 'block';
+          startScan();
+        }
+      } else if (e.code === 'KeyA' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        selectAllCategory();
+      } else if (e.code === 'Delete') {
+        deleteSelected();
+      } else if (e.code === 'Escape') {
+        if (document.getElementById('deleteModal').classList.contains('active')) {
+          closeDeleteModal();
+        } else {
+          cancelScan();
         }
       }
     }
@@ -288,8 +1104,8 @@
     function toggleScanUI(isScanning) {
       document.getElementById('startScanBtn').classList.toggle('hidden', isScanning);
       document.getElementById('cancelScanBtn').classList.toggle('hidden', !isScanning);
+      document.getElementById('progressSection').style.display = isScanning ? 'block' : 'none';
       if (isScanning) {
-        document.getElementById('progressSection').style.display = 'block';
         document.getElementById('resultsSection').classList.add('hidden');
       }
     }
@@ -329,16 +1145,31 @@
 
     function updateStats() {
       const data = scanData;
-      document.getElementById('statTotal').innerText = (data.total || 0).toLocaleString();
-      document.getElementById('statLarge').innerText = (data.large?.length || 0).toLocaleString();
-      document.getElementById('statDupes').innerText = (data.duplicates?.length || 0).toLocaleString();
-      document.getElementById('statOld').innerText = (data.old?.length || 0).toLocaleString();
-      document.getElementById('statEmpty').innerText = (data.empty?.length || 0).toLocaleString();
-      document.getElementById('statImages').innerText = (data.images?.length || 0).toLocaleString();
-      document.getElementById('statVideos').innerText = (data.videos?.length || 0).toLocaleString();
-      document.getElementById('statTrash').innerText = (data.trash?.length || 0).toLocaleString();
+      const total = data.total || 0;
+      const large = data.large?.length || 0;
+      const dupes = data.duplicates?.length || 0;
+      const old = data.old?.length || 0;
+      const empty = data.empty?.length || 0;
+      const trash = data.trash?.length || 0;
+      const shared = data.shared?.length || 0;
+      const orphan = data.orphan?.length || 0;
       
-      document.getElementById('emptyTrashBtn').disabled = !(data.trash?.length > 0);
+      document.getElementById('statTotal').innerText = total.toLocaleString();
+      document.getElementById('quickTotal').innerText = total.toLocaleString();
+      document.getElementById('statLarge').innerText = large.toLocaleString();
+      document.getElementById('statDupes').innerText = dupes.toLocaleString();
+      document.getElementById('quickDupes').innerText = dupes.toLocaleString();
+      document.getElementById('statOld').innerText = old.toLocaleString();
+      document.getElementById('statEmpty').innerText = empty.toLocaleString();
+      document.getElementById('statTrash').innerText = trash.toLocaleString();
+      document.getElementById('quickTrash').innerText = trash.toLocaleString();
+      document.getElementById('statShared').innerText = shared.toLocaleString();
+      document.getElementById('statOrphan').innerText = orphan.toLocaleString();
+      
+      const totalSize = data.totalSize || 0;
+      document.getElementById('quickSize').innerText = formatBytes(totalSize);
+      
+      document.getElementById('emptyTrashBtn').disabled = !(trash > 0);
     }
 
     async function loadStorage() {
@@ -349,8 +1180,12 @@
         const used = data.usageInDrive || data.usage || 0;
         const limit = data.limit || 15e9;
         const percent = ((used / limit) * 100).toFixed(1);
-        document.getElementById('storageUsedBar').style.width = `${percent}%`;
-        document.getElementById('storageText').innerText = `${formatBytes(used)} used of ${formatBytes(limit)} (${percent}%)`;
+        document.getElementById('storageUsedBar').style.width = `${Math.min(percent, 100)}%`;
+        
+        const color = percent > 90 ? 'var(--danger)' : percent > 70 ? 'var(--warning)' : 'var(--secondary)';
+        document.getElementById('storageUsedBar').style.background = color;
+        
+        document.getElementById('storageText').innerHTML = `<span style="color:${color}">${formatBytes(used)}</span> of ${formatBytes(limit)} (${percent}%)`;
       } catch (e) { console.error(e); }
     }
 
@@ -367,8 +1202,8 @@
       currentTab = cat;
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
-      
-      event?.target?.classList?.add('active');
+      document.querySelector(`[data-tab="${cat}"]`)?.classList.add('active');
+      document.querySelector(`[data-category="${cat}"]`)?.classList.add('active');
       renderFiles();
     }
 
@@ -376,7 +1211,7 @@
       currentTab = tab;
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
-      event.target.classList.add('active');
+      document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
       renderFiles();
     }
 
@@ -388,7 +1223,7 @@
 
       let files = getCategoryFiles(currentTab);
       
-      if (files.length === 0) {
+      if (!files || files.length === 0) {
         tbody.classList.add('hidden');
         empty.classList.remove('hidden');
         return;
@@ -397,30 +1232,32 @@
       tbody.classList.remove('hidden');
       empty.classList.add('hidden');
 
-      // Sort
       const sortBy = document.getElementById('sortSelect').value;
-      if (sortBy === 'size') files.sort((a, b) => (b.size || 0) - (a.size || 0));
-      else if (sortBy === 'date') files.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
-      else files.sort((a, b) => a.name.localeCompare(b.name));
+      if (sortBy === 'size-desc') files.sort((a, b) => (b.size || 0) - (a.size || 0));
+      else if (sortBy === 'size-asc') files.sort((a, b) => (a.size || 0) - (b.size || 0));
+      else if (sortBy === 'date-desc') files.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
+      else if (sortBy === 'date-asc') files.sort((a, b) => new Date(a.modifiedTime) - new Date(b.modifiedTime));
+      else files.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
       allFiles = files;
 
-      // Filter
       const search = document.getElementById('searchBox').value.toLowerCase();
-      if (search) files = files.filter(f => f.name.toLowerCase().includes(search));
+      if (search) files = files.filter(f => (f.name || '').toLowerCase().includes(search));
 
-      // Show first 500
-      files.slice(0, 500).forEach(file => {
+      const displayFiles = files.slice(0, 500);
+      
+      displayFiles.forEach(file => {
         const tr = document.createElement('tr');
         const checked = selectedFiles.has(file.id) ? 'checked' : '';
+        const trashed = file.trashed ? ' (trashed)' : '';
         tr.innerHTML = `
-          <td><input type="checkbox" ${checked} onchange="toggleSelect('${file.id}', this.checked)"></td>
-          <td><span class="file-icon">${getIcon(file.mimeType)}</span></td>
-          <td><div class="file-name" title="${file.name}">${file.name}</div></td>
+          <td class="file-checkbox"><input type="checkbox" ${checked} onchange="toggleSelect('${file.id}', this.checked)"></td>
+          <td class="file-icon-col"><span class="file-icon">${getIcon(file.mimeType)}</span></td>
+          <td><div class="file-name" title="${file.name}${trashed}">${file.name}${trashed}</div>${file.count ? `<span class="badge badge-warning">${file.count} copies</span>` : ''}</td>
           <td class="file-size">${formatBytes(file.size)}</td>
           <td class="file-date">${file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : '-'}</td>
           <td class="file-actions">
-            ${file.trashed ? '' : `<button class="btn btn-sm btn-danger" onclick="deleteFile('${file.id}')">Delete</button>`}
+            ${!file.trashed ? `<button class="btn btn-sm btn-danger" onclick="deleteFile('${file.id}')">Delete</button>` : ''}
           </td>
         `;
         tbody.appendChild(tr);
@@ -437,10 +1274,11 @@
         case 'duplicates': return data.duplicates || [];
         case 'old': return data.old || [];
         case 'empty': return data.empty || [];
-        case 'images': return data.images || [];
-        case 'videos': return data.videos || [];
         case 'trash': return data.trash || [];
-        default: return data.files || [];
+        case 'shared': return data.shared || [];
+        case 'orphan': return data.orphan || [];
+        case 'contentDupes': return data.contentDupes || [];
+        default: return [];
       }
     }
 
@@ -454,16 +1292,25 @@
       const checkboxes = document.querySelectorAll('#fileTableBody input[type="checkbox"]');
       checkboxes.forEach(cb => {
         cb.checked = source.checked;
-        const id = cb.getAttribute('onchange').match(/'([^']+)'/)?.[1];
+        const id = cb.getAttribute('onchange')?.match(/'([^']+)'/)?.[1];
         if (id) {
           if (source.checked) selectedFiles.add(id);
           else selectedFiles.delete(id);
         }
       });
+      updateDeleteBtn();
+    }
+
+    function selectAllCategory() {
+      const files = getCategoryFiles(currentTab);
+      files.forEach(f => selectedFiles.add(f.id));
+      renderFiles();
     }
 
     function updateDeleteBtn() {
-      document.getElementById('deleteBtn').innerText = `Delete Selected (${selectedFiles.size})`;
+      const btn = document.getElementById('deleteBtn');
+      btn.disabled = selectedFiles.size === 0;
+      btn.innerText = `Delete Selected (${selectedFiles.size})`;
     }
 
     function filterFiles() {
@@ -475,39 +1322,91 @@
     }
 
     async function deleteSelected() {
-      if (selectedFiles.size === 0) return alert('No files selected');
-      if (!confirm(`Delete ${selectedFiles.size} files permanently?`)) return;
-
-      try {
-        const res = await authFetch('/api/files/delete', {
-          method: 'POST',
-          body: JSON.stringify({ fileIds: [...selectedFiles] })
-        });
-        const data = await res.json();
-        alert(data.message || 'Done');
+      if (selectedFiles.size === 0) return;
+      
+      const modal = document.getElementById('deleteModal');
+      modal.classList.add('active');
+      
+      const fileIds = [...selectedFiles];
+      let processed = 0;
+      let success = 0;
+      let failed = 0;
+      const batchSize = 50;
+      
+      for (let i = 0; i < fileIds.length; i += batchSize) {
+        const batch = fileIds.slice(i, i + batchSize);
+        
+        try {
+          const res = await authFetch('/api/files/delete', {
+            method: 'POST',
+            body: JSON.stringify({ fileIds: batch })
+          });
+          const data = await res.json();
+          success += batch.length;
+        } catch (e) {
+          failed += batch.length;
+        }
+        
+        processed += batch.length;
+        const percent = (processed / fileIds.length) * 100;
+        
+        document.getElementById('deleteProgressFill').style.width = `${percent}%`;
+        document.getElementById('deleteProcessed').innerText = processed;
+        document.getElementById('deleteSuccess').innerText = success;
+        document.getElementById('deleteFailed').innerText = failed;
+        document.getElementById('deleteModalText').innerText = `Deleting ${processed} of ${fileIds.length} files...`;
+        
+        await new Promise(r => setTimeout(r, 500));
+      }
+      
+      document.getElementById('deleteModalClose').classList.remove('hidden');
+      document.getElementById('deleteModalText').innerText = `Complete! Deleted ${success} files.${failed > 0 ? ` ${failed} failed.` : ''}`;
+      
+      selectedFiles.clear();
+      setTimeout(() => {
         startScan();
-      } catch (e) { alert('Error: ' + e.message); }
+      }, 2000);
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').classList.remove('active');
+      closeDeleteModalRest();
+    }
+
+    function closeDeleteModalRest() {
+      document.getElementById('deleteModal').classList.remove('active');
+      document.getElementById('deleteProgressFill').style.width = '0%';
+      document.getElementById('deleteProcessed').innerText = '0';
+      document.getElementById('deleteSuccess').innerText = '0';
+      document.getElementById('deleteFailed').innerText = '0';
     }
 
     async function deleteFile(id) {
-      if (!confirm('Delete this file permanently?')) return;
-      try {
-        const res = await authFetch('/api/files/delete', {
-          method: 'POST',
-          body: JSON.stringify({ fileIds: [id] })
-        });
-        startScan();
-      } catch (e) { alert('Error: ' + e.message); }
+      selectedFiles.clear();
+      selectedFiles.add(id);
+      await deleteSelected();
     }
 
     async function emptyTrash() {
       if (!confirm('Empty trash permanently? This cannot be undone.')) return;
+      
+      const modal = document.getElementById('deleteModal');
+      modal.classList.add('active');
+      document.getElementById('deleteModalText').innerText = 'Emptying trash...';
+      
       try {
         const res = await authFetch('/api/trash/empty', { method: 'POST' });
         const data = await res.json();
-        alert(data.message || 'Trash emptied');
-        startScan();
-      } catch (e) { alert('Error: ' + e.message); }
+        document.getElementById('deleteModalText').innerText = data.message || 'Trash emptied';
+        document.getElementById('deleteProgressFill').style.width = '100%';
+        document.getElementById('deleteSuccess').innerText = 'Done';
+        setTimeout(() => {
+          closeDeleteModal();
+          startScan();
+        }, 2000);
+      } catch (e) {
+        document.getElementById('deleteModalText').innerText = 'Error: ' + e.message;
+      }
     }
 
     function exportCSV() {
@@ -536,7 +1435,7 @@
     }
 
     function formatBytes(bytes) {
-      if (!bytes) return '0 B';
+      if (!bytes || bytes === 0) return '0 B';
       const k = 1024;
       const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));

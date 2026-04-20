@@ -458,10 +458,13 @@ async function runDriveScan(jobId, ws) {
     let pageToken = null;
     
     const nameMap = new Map();
+    const sizeMap = new Map();
     const largeFiles = [];
     const oldFiles = [];
     const emptyFiles = [];
     const trashFiles = [];
+    const sharedFiles = [];
+    const orphanFiles = [];
     
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
@@ -469,40 +472,96 @@ async function runDriveScan(jobId, ws) {
     job.stage = "Scanning Drive";
     pushUpdate(jobId, ws, job);
 
+    const batchSize = 1000;
+    const pageSize = 100;
+    let batchPromises = [];
+    let batchPageTokens = [null];
+
+    async function processBatch(results) {
+      for (const r of results) {
+        if (!r?.data?.files) continue;
+        const files = r.data.files;
+        
+        files.forEach(f => {
+          const size = Number(f.size || 0);
+          totalFiles++;
+          totalSize += size;
+
+          const count = nameMap.get(f.name) || 0;
+          nameMap.set(f.name, count + 1);
+
+          if (size > 100 * 1024 * 1024) largeFiles.push(f);
+          if (size === 0) emptyFiles.push(f); 
+
+          if (f.modifiedTime) {
+            if (new Date(f.modifiedTime) < oneYearAgo) oldFiles.push(f);
+          }
+
+          if (f.permissions && f.permissions.length > 1) {
+            sharedFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime, shared: true });
+          }
+
+          if (f.owners && f.owners.length === 0) {
+            orphanFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime });
+          }
+        });
+
+        totalFiles += files.length;
+      }
+    }
+
     do {
       if (job.cancel) return;
 
-      const r = await retryRequest(() => drive.files.list({
-        pageSize: 1000,
-        fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime)',
-        q: "trashed=false",
-        pageToken
-      }));
+      const futures = batchPageTokens.slice(0, 5).map(token => 
+        retryRequest(() => drive.files.list({
+          pageSize: pageSize,
+          fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime,owners,permissions)',
+          q: "trashed=false",
+          pageToken: token
+        }))
+      );
 
-      const files = r.data.files || [];
+      const results = await Promise.all(futures);
       
-      files.forEach(f => {
-        const size = Number(f.size || 0);
-        totalFiles++;
-        totalSize += size;
+      for (const r of results) {
+        if (r?.data?.files) {
+          r.data.files.forEach(f => {
+            const size = Number(f.size || 0);
+            totalFiles++;
+            totalSize += size;
 
-        const count = nameMap.get(f.name) || 0;
-        nameMap.set(f.name, count + 1);
+            const count = nameMap.get(f.name) || 0;
+            nameMap.set(f.name, count + 1);
 
-        if (size > 100 * 1024 * 1024) largeFiles.push(f);
-        if (size === 0) emptyFiles.push(f); 
+            if (size > 100 * 1024 * 1024) largeFiles.push(f);
+            if (size === 0) emptyFiles.push(f); 
 
-        if (f.modifiedTime) {
-          if (new Date(f.modifiedTime) < oneYearAgo) oldFiles.push(f);
+            if (f.modifiedTime) {
+              if (new Date(f.modifiedTime) < oneYearAgo) oldFiles.push(f);
+            }
+
+            if (f.permissions && f.permissions.length > 1) {
+              sharedFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime, shared: true });
+            }
+
+            if (f.owners && f.owners.length === 0) {
+              orphanFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime });
+            }
+          });
         }
-      });
+      }
+
+      batchPageTokens = results
+        .filter(r => r.data.nextPageToken)
+        .map(r => r.data.nextPageToken);
+
+      if (batchPageTokens.length === 0) break;
 
       job.progress = Math.min(60, (totalFiles / 20000) * 60); 
       job.stage = `Scanned ${totalFiles.toLocaleString()} files`;
       pushUpdate(jobId, ws, job);
-
-      pageToken = r.data.nextPageToken;
-    } while (pageToken);
+    } while (batchPageTokens.length > 0);
 
     job.stage = "Scanning Trash";
     job.progress = 85;
@@ -541,6 +600,33 @@ async function runDriveScan(jobId, ws) {
       if (count > 1) duplicateNames.push({ name, count });
     }
 
+    job.stage = "Computing content hashes";
+    job.progress = 90;
+    pushUpdate(jobId, ws, job);
+
+    const contentHashes = new Map();
+    const potentialDupes = largeFiles.filter(f => f.size > 1024 * 1024).slice(0, 100);
+    
+    for (const file of potentialDupes) {
+      if (job.cancel) return;
+      try {
+        const metadata = await retryRequest(() => drive.files.get({ fileId: file.id, fields: 'md5Checksum,size,name,mimeType,modifiedTime' }));
+        const hash = metadata.data.md5Checksum;
+        if (hash) {
+          const existing = contentHashes.get(hash) || [];
+          existing.push({ id: file.id, name: file.name, size: Number(file.size), mimeType: file.mimeType, modifiedTime: file.modifiedTime, md5: hash });
+          contentHashes.set(hash, existing);
+        }
+      } catch (e) {}
+    }
+
+    const contentDupes = [];
+    for (const [hash, files] of contentHashes.entries()) {
+      if (files.length > 1) {
+        files.forEach(f => contentDupes.push(f));
+      }
+    }
+
     job.progress = 100;
     job.stage = "Complete";
     
@@ -554,7 +640,10 @@ async function runDriveScan(jobId, ws) {
       large: largeFiles.slice(0, 500),
       old: oldFiles.slice(0, 500),
       empty: emptyFiles.slice(0, 500),
-      trash: trashFiles.slice(0, 500)
+      trash: trashFiles.slice(0, 500),
+      shared: sharedFiles.slice(0, 500),
+      orphan: orphanFiles.slice(0, 500),
+      contentDupes: contentDupes.slice(0, 500)
     };
 
     pushUpdate(jobId, ws, job);
