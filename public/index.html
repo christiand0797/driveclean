@@ -862,6 +862,10 @@
             <h4 style="color:var(--text-dim);font-size:12px;text-transform:uppercase;margin-bottom:10px">Categories</h4>
             <div id="mimeBreakdown" style="display:flex;flex-wrap:wrap;gap:8px"></div>
           </div>
+          <div>
+            <h4 style="color:var(--text-dim);font-size:12px;text-transform:uppercase;margin-bottom:10px">Largest Folders</h4>
+            <div id="folderBreakdown"></div>
+          </div>
         </div>
       </div>
 
@@ -1226,6 +1230,17 @@
       const gmailData = data.gmail || {};
       document.getElementById('quickPromos').innerText = (gmailData.promotions || 0).toLocaleString();
       document.getElementById('quickSocial').innerText = (gmailData.social || 0).toLocaleString();
+
+      const folderData = data.folderSizes || [];
+      const folderDiv = document.getElementById('folderBreakdown');
+      if (folderData.length > 0) {
+        folderDiv.innerHTML = folderData.slice(0, 8).map(([id, size]) => 
+          `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <span style="color:var(--text-dim);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${id.substring(0,20)}...</span>
+            <span style="color:var(--secondary);font-family:'JetBrains Mono',monospace">${formatBytes(size)}</span>
+          </div>`
+        ).join('');
+      }
     }
 
     async function loadStorage() {

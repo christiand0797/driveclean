@@ -484,7 +484,7 @@ async function runDriveScan(jobId, ws) {
       const futures = nextPageTokens.slice(0, 5).map(token => 
         retryRequest(() => drive.files.list({
           pageSize: pageSize,
-          fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime,owners,permissions)',
+          fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime,owners,permissions,parents)',
           q: "trashed=false",
           pageToken: token
         }))
@@ -522,6 +522,11 @@ async function runDriveScan(jobId, ws) {
             
             const mimeCat = f.mimeType?.split('/')[0] || 'other';
             mimeMap.set(mimeCat, (mimeMap.get(mimeCat) || 0) + 1);
+
+            if (f.parents && f.parents.length > 0) {
+              const parentId = f.parents[0];
+              folderSizeMap.set(parentId, (folderSizeMap.get(parentId) || 0) + size);
+            }
           });
         }
       }
@@ -536,6 +541,14 @@ async function runDriveScan(jobId, ws) {
       job.stage = `Scanned ${totalFiles.toLocaleString()} files`;
       pushUpdate(jobId, ws, job);
     } while (nextPageTokens.length > 0);
+
+    job.stage = "Analyzing Folders";
+    job.progress = 80;
+    pushUpdate(jobId, ws, job);
+
+    const folderSizes = Array.from(folderSizeMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
 
     job.stage = "Scanning Trash";
     job.progress = 85;
@@ -619,7 +632,8 @@ async function runDriveScan(jobId, ws) {
       orphan: orphanFiles.slice(0, 500),
       contentDupes: contentDupes.slice(0, 500),
       extensions: Array.from(extMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 20),
-      mimeTypes: Array.from(mimeMap.entries()).sort((a, b) => b[1] - a[1])
+      mimeTypes: Array.from(mimeMap.entries()).sort((a, b) => b[1] - a[1]),
+      folderSizes: folderSizes
     };
 
     pushUpdate(jobId, ws, job);
