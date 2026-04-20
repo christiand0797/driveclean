@@ -1,417 +1,54 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DriveClean - Clean Your Google Drive</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0a14; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; }
-    .container { max-width: 1400px; margin: 0 auto; padding: 15px; }
-    h1 { text-align: center; color: #00d4ff; font-size: 1.8rem; margin-bottom: 5px; }
-    .subtitle { text-align: center; color: #666; margin-bottom: 15px; font-size: 0.85rem; }
-    
-    .login-section { text-align: center; padding: 100px 20px; }
-    .btn { background: linear-gradient(135deg, #00d4ff, #0099ff); color: #0a0a14; border: none; padding: 14px 40px; font-size: 1rem; font-weight: bold; border-radius: 30px; cursor: pointer; transition: all 0.3s; }
-    .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,212,255,0.4); }
-    .btn-danger { background: linear-gradient(135deg, #ff4757, #ff6b81); color: #fff; }
-    .btn-warning { background: linear-gradient(135deg, #ffa502, #ffbe00); color: #0a0a14; }
-    .btn-small { padding: 8px 16px; font-size: 0.8rem; border-radius: 20px; }
-    .dashboard { display: none; }
-    
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
-    .user-info { display: flex; align-items: center; gap: 10px; }
-    .user-info img { width: 36px; height: 36px; border-radius: 50%; border: 2px solid #00d4ff; }
-    
-    .storage-bar { background: #1a1a2e; height: 24px; border-radius: 12px; margin: 15px 0; overflow: hidden; position: relative; }
-    .storage-used { background: linear-gradient(90deg, #00d4ff, #0099ff); height: 100%; transition: width 0.5s; }
-    .storage-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 0.7rem; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-    
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 15px; }
-    .stat-card { background: #161625; padding: 18px; border-radius: 12px; text-align: center; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
-    .stat-card:hover { border-color: #00d4ff; transform: translateY(-2px); }
-    .stat-card h3 { color: #00d4ff; font-size: 1.4rem; margin-bottom: 5px; }
-    .stat-card p { color: #777; font-size: 0.75rem; }
-    .stat-card .warning { color: #ff4757; }
-    
-    .tabs { display: flex; gap: 5px; margin-bottom: 12px; border-bottom: 1px solid #252545; padding-bottom: 10px; overflow-x: auto; flex-wrap: wrap; }
-    .tab { background: transparent; color: #777; border: none; padding: 10px 18px; font-size: 0.85rem; cursor: pointer; border-radius: 8px; white-space: nowrap; transition: all 0.2s; }
-    .tab:hover { color: #00d4ff; }
-    .tab.active { background: #00d4ff; color: #0a0a14; font-weight: 600; }
-    
-    .section { display: none; }
-    .section.active { display: block; }
-    
-    .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-    .file-card { background: #161625; border-radius: 10px; overflow: hidden; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
-    .file-card:hover { border-color: #00d4ff; transform: translateY(-3px); }
-    .file-card.selected { border-color: #00d4ff; box-shadow: 0 0 20px rgba(0,212,255,0.3); }
-    .thumbnail { width: 100%; height: 100px; background: #1f1f35; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .thumbnail img { width: 100%; height: 100%; object-fit: cover; }
-    .thumbnail .icon { font-size: 2.2rem; }
-    .file-info { padding: 10px; }
-    .file-name { font-size: 0.75rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
-    .file-meta { color: #666; font-size: 0.65rem; margin-top: 5px; }
-    
-    .actions-bar { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center; }
-    .count-display { color: #888; font-size: 0.9rem; margin-left: auto; }
-    
-    .loading { text-align: center; padding: 60px; }
-    .spinner { width: 40px; height: 40px; border: 3px solid #252545; border-top-color: #00d4ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    
-    .empty { text-align: center; padding: 50px; color: #555; }
-    .empty-icon { font-size: 3rem; margin-bottom: 10px; opacity: 0.5; }
-    
-    .toast { position: fixed; bottom: 20px; right: 20px; background: #2ed573; color: #0a0a14; padding: 14px 28px; border-radius: 10px; font-weight: 600; transform: translateY(100px); transition: transform 0.3s; z-index: 1000; }
-    .toast.show { transform: translateY(0); }
-    .toast.error { background: #ff4757; color: #fff; }
-    .toast.loading { background: #ffa502; }
-    
-    .progress-bar { position: fixed; top: 0; left: 0; height: 4px; background: #00d4ff; width: 0%; transition: width 0.3s; z-index: 9999; }
-  </style>
-</head>
-<body>
-  <div class="progress-bar" id="progressBar"></div>
-  
-  <div class="container">
-    <h1>DriveClean</h1>
-    <p class="subtitle">Clean your Google Drive, Photos & Gmail</p>
-    
-    <div class="login-section" id="loginSection">
-      <p style="color:#888;margin-bottom:20px;">Connect your Google account to scan and clean</p>
-      <button class="btn" onclick="login()">Connect Google Account</button>
-    </div>
-    
-    <div class="dashboard" id="dashboard">
-      <div class="header">
-        <div class="user-info" id="userInfo"></div>
-        <button class="btn btn-small btn-danger" onclick="logout()">Logout</button>
-      </div>
-      
-      <div class="storage-bar">
-        <div class="storage-used" id="storageUsed" style="width:0%"></div>
-        <div class="storage-text" id="storageText">Loading...</div>
-      </div>
-      
-      <div class="stats-grid">
-        <div class="stat-card" onclick="showTab('files')"><h3 id="totalFiles">0</h3><p>Drive Files</p></div>
-        <div class="stat-card" onclick="showTab('photos')"><h3 id="photoCount">0</h3><p>Google Photos</p></div>
-        <div class="stat-card" onclick="showTab('emails')"><h3 id="emailCount">0</h3><p>Gmail</p></div>
-        <div class="stat-card" onclick="showTab('duplicates')"><h3 class="warning" id="duplicateCount">0</h3><p>Duplicates</p></div>
-        <div class="stat-card" onclick="showTab('large')"><h3 id="largeCount">0</h3><p>Large (100MB+)</p></div>
-        <div class="stat-card" onclick="showTab('old')"><h3 id="oldCount">0</h3><p>Old (1 yr+)</p></div>
-        <div class="stat-card" onclick="showTab('images')"><h3 id="imageCount">0</h3><p>Images</p></div>
-        <div class="stat-card" onclick="showTab('videos')"><h3 id="videoCount">0</h3><p>Videos</p></div>
-        <div class="stat-card" onclick="showTab('promotions')"><h3 class="warning" id="promoCount">0</h3><p>Promotions</p></div>
-        <div class="stat-card" onclick="showTab('spam')"><h3 class="warning" id="spamCount">0</h3><p>Spam</p></div>
-      </div>
-      
-      <div class="tabs">
-        <button class="tab active" onclick="showTab('files')">All Files</button>
-        <button class="tab" onclick="showTab('photos')">Photos</button>
-        <button class="tab" onclick="showTab('emails')">Emails</button>
-        <button class="tab" onclick="showTab('duplicates')">Duplicates</button>
-        <button class="tab" onclick="showTab('large')">Large</button>
-        <button class="tab" onclick="showTab('old')">Old</button>
-        <button class="tab" onclick="showTab('images')">Images</button>
-        <button class="tab" onclick="showTab('videos')">Videos</button>
-        <button class="tab" onclick="showTab('promotions')">Promotions</button>
-        <button class="tab" onclick="showTab('spam')">Spam</button>
-      </div>
-      
-      <div class="actions-bar">
-        <button class="btn btn-small" onclick="scan()">Refresh</button>
-        <button class="btn btn-small btn-warning" onclick="selectAll()">Select All</button>
-        <button class="btn btn-small btn-danger" onclick="deleteSelected()">Delete</button>
-        <button class="btn btn-small btn-warning" onclick="moveToTrash()">Trash</button>
-        <span class="count-display" id="selectedCount">0 selected</span>
-      </div>
-      
-      <div class="section active" id="files"><div class="file-grid" id="fileGrid"><div class="loading"><div class="spinner"></div>Loading...</div></div></div>
-      <div class="section" id="photos"><div class="file-grid" id="photoGrid"></div></div>
-      <div class="section" id="emails"><div class="file-grid" id="emailGrid"></div></div>
-      <div class="section" id="duplicates"><div class="file-grid" id="duplicateGrid"></div></div>
-      <div class="section" id="large"><div class="file-grid" id="largeGrid"></div></div>
-      <div class="section" id="old"><div class="file-grid" id="oldGrid"></div></div>
-      <div class="section" id="images"><div class="file-grid" id="imageGrid"></div></div>
-      <div class="section" id="videos"><div class="file-grid" id="videoGrid"></div></div>
-      <div class="section" id="promotions"><div class="file-grid" id="promoGrid"></div></div>
-      <div class="section" id="spam"><div class="file-grid" id="spamGrid"></div></div>
-    </div>
-    
-    <div class="toast" id="toast"></div>
-  </div>
-  
-  <script>
-    let scanData = {};
-    let selectedFiles = new Set();
-    let token = localStorage.getItem('driveclean_token') || '';
-    
-    function getToken() {
-      return token ? '&token=' + token : '';
-    }
-    
-    function getIcon(mimeType, item) {
-      if (item.baseUrl) return '<img src="' + item.baseUrl + '=w400-h400" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'' + getEmoji(mimeType) + '\'">';
-      if (item.thumbnailLink) return '<img src="' + item.thumbnailLink + '=w400-h400" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'' + getEmoji(mimeType) + '\'">';
-      if (item.iconLink) return '<img src="' + item.iconLink + '" style="object-fit:contain;padding:25px" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'' + getEmoji(mimeType) + '\'">';
-      return getEmoji(mimeType);
-    }
-    
-    function getEmoji(mimeType) {
-      if (mimeType && mimeType.includes('image')) return '🖼️';
-      if (mimeType && mimeType.includes('video')) return '🎬';
-      if (mimeType && mimeType.includes('audio')) return '🎵';
-      if (mimeType && mimeType.includes('document')) return '📄';
-      if (mimeType && mimeType.includes('sheet')) return '📊';
-      if (mimeType && mimeType.includes('presentation')) return '📽️';
-      if (mimeType && mimeType.includes('folder')) return '📁';
-      if (mimeType && (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z'))) return '📦';
-      if (mimeType && mimeType.includes('pdf')) return '📕';
-      return '📎';
-    }
-    
-    async function login() {
-      const res = await fetch('/api/auth/url');
-      const data = await res.json();
-      if (data.error) return showToast(data.error, 'error');
-      
-      // Open OAuth in popup
-      const width = 500, height = 600;
-      const left = (screen.width - width) / 2;
-      const top = (screen.height - height) / 2;
-      window.open(data.url, 'oauth', 'width=' + width + ',height=' + height + ',left=' + left + ',top=' + top);
-    }
-    
-    async function checkUser() {
-      const params = new URLSearchParams(window.location.search);
-      
-      // Check for login success
-      if (params.get('login') === 'success' && params.get('token')) {
-        token = params.get('token');
-        localStorage.setItem('driveclean_token', token);
-        window.history.replaceState({}, '', window.location.pathname);
-        showToast('Logged in!', 'success');
-      }
-      
-      // Check for errors
-      if (params.get('error')) {
-        showToast(params.get('error'), 'error');
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-      
-      if (!token) return;
-      
-      const res = await fetch('/api/user?token=' + token);
-      const data = await res.json();
-      
-      if (data.loggedIn) {
-        document.getElementById('loginSection').style.display = 'none';
-        document.getElementById('dashboard').style.display = 'block';
-        document.getElementById('userInfo').innerHTML = data.user.picture ? '<img src="' + data.user.picture + '">' : '';
-        document.getElementById('userInfo').innerHTML += '<span style="color:#888;font-size:0.85rem">' + data.user.email + '</span>';
-        loadStorage();
-        scan();
-      } else {
-        token = '';
-        localStorage.removeItem('driveclean_token');
-      }
-    }
-    
-    async function loadStorage() {
-      if (!token) return;
-      try {
-        const res = await fetch('/api/storage?token=' + token);
-        const data = await res.json();
-        if (data.usage) {
-          const pct = ((data.usageInDrive || 0) / data.usage) * 100;
-          document.getElementById('storageUsed').style.width = pct + '%';
-          document.getElementById('storageText').textContent = f(data.usageInDrive) + ' / ' + f(data.usage) + ' used';
-        }
-      } catch (e) {}
-    }
-    
-    async function scan() {
-      if (!token) return;
-      showToast('Scanning...', 'loading');
-      showProgress(10);
-      
-      try {
-        const res = await fetch('/api/scan?token=' + token, { method: 'POST' });
-        showProgress(90);
-        const data = await res.json();
-        
-        if (data.error && data.error.includes('authentication')) {
-          showToast('Session expired, please login again', 'error');
-          token = '';
-          localStorage.removeItem('driveclean_token');
-          document.getElementById('loginSection').style.display = 'block';
-          document.getElementById('dashboard').style.display = 'none';
-          return;
-        }
-        
-        scanData = data;
-        updateStats();
-        renderAll();
-        showProgress(0);
-        showToast('Scan complete!');
-      } catch (e) {
-        showProgress(0);
-        showToast('Scan error: ' + e.message, 'error');
-      }
-    }
-    
-    function showProgress(pct) {
-      document.getElementById('progressBar').style.width = pct + '%';
-    }
-    
-    function updateStats() {
-      document.getElementById('totalFiles').textContent = (scanData.total || 0).toLocaleString();
-      document.getElementById('photoCount').textContent = (scanData.photos || []).length.toLocaleString();
-      document.getElementById('emailCount').textContent = (scanData.emails || []).length.toLocaleString();
-      document.getElementById('duplicateCount').textContent = (scanData.duplicates || []).length.toLocaleString();
-      document.getElementById('largeCount').textContent = (scanData.large || []).length.toLocaleString();
-      document.getElementById('oldCount').textContent = (scanData.old || []).length.toLocaleString();
-      document.getElementById('imageCount').textContent = (scanData.images || []).length.toLocaleString();
-      document.getElementById('videoCount').textContent = (scanData.videos || []).length.toLocaleString();
-      document.getElementById('promoCount').textContent = (scanData.promotions || []).length.toLocaleString();
-      document.getElementById('spamCount').textContent = (scanData.spam || []).length.toLocaleString();
-    }
-    
-    function renderAll() {
-      renderGrid('fileGrid', scanData.files || []);
-      renderGrid('photoGrid', scanData.photos || []);
-      renderGrid('emailGrid', scanData.emails || []);
-      renderGrid('duplicateGrid', scanData.duplicates || []);
-      renderGrid('largeGrid', scanData.large || []);
-      renderGrid('oldGrid', scanData.old || []);
-      renderGrid('imageGrid', scanData.images || []);
-      renderGrid('videoGrid', scanData.videos || []);
-      renderGrid('promoGrid', scanData.promotions || []);
-      renderGrid('spamGrid', scanData.spam || []);
-    }
-    
-    function renderGrid(id, items) {
-      const container = document.getElementById(id);
-      if (!items || !items.length) {
-        container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>No items</div>';
-        return;
-      }
-      
-      container.innerHTML = items.slice(0, 200).map(function(item) {
-        const id = item.id;
-        const name = item.name || item.snippet || 'Untitled';
-        const size = item.size || 0;
-        const mimeType = item.mimeType || 'application/octet-stream';
-        const date = item.createdTime ? new Date(item.createdTime).toLocaleDateString() : '';
-        const thumb = getIcon(mimeType, item);
-        const sel = selectedFiles.has(id) ? 'selected' : '';
-        
-        return '<div class="file-card ' + sel + '" onclick="toggle(\'' + id + '\')"><div class="thumbnail">' + thumb + '</div><div class="file-info"><div class="file-name" title="' + name + '">' + name + '</div><div class="file-meta">' + f(size) + (date ? ' • ' + date : '') + '</div></div></div>';
-      }).join('');
-    }
-    
-    function toggle(id) {
-      if (selectedFiles.has(id)) selectedFiles.delete(id);
-      else selectedFiles.add(id);
-      document.getElementById('selectedCount').textContent = selectedFiles.size + ' selected';
-      renderAll();
-    }
-    
-    function selectAll() {
-      const items = getCurrentItems();
-      items.forEach(function(i) { selectedFiles.add(i.id); });
-      document.getElementById('selectedCount').textContent = selectedFiles.size + ' selected';
-      renderAll();
-      showToast(selectedFiles.size + ' selected');
-    }
-    
-    function getCurrentItems() {
-      const tabMap = {
-        files: 'files', photos: 'photos', emails: 'emails', duplicates: 'duplicates',
-        large: 'large', old: 'old', images: 'images', videos: 'videos',
-        promotions: 'promotions', spam: 'spam'
-      };
-      const key = tabMap[currentTab] || 'files';
-      return scanData[key] || [];
-    }
-    
-    async function deleteSelected() {
-      if (selectedFiles.size === 0) return showToast('No files selected', 'error');
-      if (!confirm('Delete ' + selectedFiles.size + ' files permanently?')) return;
-      
-      const fileIds = Array.from(selectedFiles);
-      await fetch('/api/delete?token=' + token, { 
-        method: 'POST', 
-        headers: {'Content-Type':'application/json'}, 
-        body: JSON.stringify({ fileIds }) 
-      });
-      selectedFiles.clear();
-      showToast(fileIds.length + ' files deleted');
-      scan();
-    }
-    
-    async function moveToTrash() {
-      if (selectedFiles.size === 0) return showToast('No files selected', 'error');
-      const fileIds = Array.from(selectedFiles);
-      await fetch('/api/trash?token=' + token, { 
-        method: 'POST', 
-        headers: {'Content-Type':'application/json'}, 
-        body: JSON.stringify({ fileIds }) 
-      });
-      selectedFiles.clear();
-      showToast(fileIds.length + ' moved to trash');
-      scan();
-    }
-    
-    let currentTab = 'files';
-    function showTab(tab) {
-      currentTab = tab;
-      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-      document.querySelectorAll('.section').forEach(function(s) { s.classList.remove('active'); });
-      
-      var tabs = ['files','photos','emails','duplicates','large','old','images','videos','promotions','spam'];
-      var tabEl = document.querySelectorAll('.tab')[tabs.indexOf(tab)];
-      if (tabEl) tabEl.classList.add('active');
-      document.getElementById(tab).classList.add('active');
-    }
-    
-    function showToast(msg, type) {
-      type = type || 'success';
-      var t = document.getElementById('toast');
-      t.textContent = msg;
-      t.className = 'toast show ' + type;
-      setTimeout(function() { t.classList.remove('show'); }, 3000);
-    }
-    
-    function f(bytes) {
-      if (!bytes || bytes === '0') return '0 B';
-      var u = ['B','KB','MB','GB','TB'];
-      var i = 0;
-      while (parseInt(bytes) >= 1024 && i < u.length-1) { bytes /= 1024; i++; }
-      return bytes.toFixed(1) + ' ' + u[i];
-    }
-    
-    async function logout() {
-      if (token) await fetch('/api/logout?token=' + token);
-      token = '';
-      localStorage.removeItem('driveclean_token');
-      window.location.reload();
-    }
-    
-    // Listen for postMessage from auth callback
-    window.addEventListener('message', function(e) {
-      if (e.data && e.data.type === 'driveclean-auth') {
-        token = e.data.token;
-        localStorage.setItem('driveclean_token', token);
-        showToast('Logged in!', 'success');
-        checkUser();
-      }
-    });
-    
-    // Init
-    checkUser();
-  </script>
-</body>
-</html>
+<script>
+let scanData = {};
+let selectedFiles = new Set();
+
+async function login() {
+  const res = await fetch('/api/auth/url');
+  const data = await res.json();
+  window.location.href = data.url;
+}
+
+async function checkUser() {
+  const res = await fetch('/api/user', {
+    credentials: 'include'
+  });
+
+  const data = await res.json();
+
+  if (data.loggedIn) {
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    scan();
+  }
+}
+
+async function scan() {
+  const res = await fetch('/api/scan', {
+    method: 'POST',
+    credentials: 'include'
+  });
+
+  scanData = await res.json();
+  updateStats();
+  renderAll();
+}
+
+async function deleteSelected() {
+  await fetch('/api/delete', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileIds: [...selectedFiles] })
+  });
+
+  selectedFiles.clear();
+  scan();
+}
+
+async function logout() {
+  await fetch('/api/logout', { credentials: 'include' });
+  location.reload();
+}
+
+checkUser();
+</script>
