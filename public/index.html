@@ -1,54 +1,366 @@
-<script>
-let scanData = {};
-let selectedFiles = new Set();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DriveClean - Google Drive Cleaner</title>
+  <style>
+    :root { --primary: #4285f4; --danger: #ea4335; --success: #34a853; --bg: #f8f9fa; --card: #fff; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); margin: 0; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    
+    header { background: var(--card); padding: 15px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; }
+    .header-content { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+    .logo { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
+    .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-secondary { background: #e0e0e0; color: #333; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-async function login() {
-  const res = await fetch('/api/auth/url');
-  const data = await res.json();
-  window.location.href = data.url;
-}
+    #loginSection { text-align: center; padding: 100px 20px; }
+    #loginSection h1 { font-size: 3rem; margin-bottom: 10px; }
+    #loginSection p { color: #666; margin-bottom: 30px; font-size: 1.2rem; }
 
-async function checkUser() {
-  const res = await fetch('/api/user', {
-    credentials: 'include'
-  });
+    .card { background: var(--card); border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .storage-bar { height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden; margin: 15px 0; }
+    .storage-used { height: 100%; background: linear-gradient(90deg, var(--primary), #34a853); transition: width 0.5s; }
+    
+    .progress-container { display: none; text-align: center; padding: 40px; }
+    .progress-bar { height: 10px; background: #e0e0e0; border-radius: 5px; margin: 20px 0; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
+    
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+    .tab { padding: 8px 16px; cursor: pointer; border-radius: 5px 5px 0 0; background: #eee; border: none; font-size: 14px; }
+    .tab.active { background: var(--primary); color: white; }
+    
+    .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+    .file-card { background: var(--card); border: 1px solid #eee; border-radius: 8px; padding: 10px; position: relative; transition: 0.2s; }
+    .file-card:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    .file-card input[type="checkbox"] { position: absolute; top: 10px; right: 10px; transform: scale(1.2); }
+    .file-icon { font-size: 2rem; margin-bottom: 10px; display: block; }
+    .file-name { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+    .file-meta { font-size: 0.8rem; color: #666; margin-top: 5px; }
+    
+    .hidden { display: none; }
+    .text-danger { color: var(--danger); }
+  </style>
+</head>
+<body>
 
-  const data = await res.json();
+  <div id="loginSection">
+    <h1>🧹 DriveClean</h1>
+    <p>Clean up your Google Drive storage. Find duplicates, large files, and more.</p>
+    <button class="btn btn-primary" onclick="login()">Sign in with Google</button>
+  </div>
 
-  if (data.loggedIn) {
-    document.getElementById('loginSection').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
-    scan();
-  }
-}
+  <header id="mainHeader" class="hidden">
+    <div class="header-content">
+      <div class="logo">DriveClean</div>
+      <div class="user-info">
+        <span id="userName"></span>
+        <button class="btn btn-secondary" onclick="logout()">Logout</button>
+      </div>
+    </div>
+  </header>
 
-async function scan() {
-  const res = await fetch('/api/scan', {
-    method: 'POST',
-    credentials: 'include'
-  });
+  <div class="container">
+    <div id="dashboard" class="hidden">
+      
+      <div class="card">
+        <h3>Storage Usage</h3>
+        <div class="storage-bar">
+          <div id="storageUsedBar" class="storage-used"></div>
+        </div>
+        <p id="storageText">Loading storage info...</p>
+      </div>
 
-  scanData = await res.json();
-  updateStats();
-  renderAll();
-}
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h3>Scanner</h3>
+          <div>
+            <button id="startScanBtn" class="btn btn-primary" onclick="startScan()">Start Scan</button>
+            <button id="cancelScanBtn" class="btn btn-secondary hidden" onclick="cancelScan()">Cancel</button>
+          </div>
+        </div>
+        
+        <div id="progressSection" class="progress-container">
+          <p id="progressStage">Initializing...</p>
+          <div class="progress-bar">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+        </div>
+      </div>
 
-async function deleteSelected() {
-  await fetch('/api/delete', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fileIds: [...selectedFiles] })
-  });
+      <div id="resultsSection" class="hidden">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+            <div class="tabs">
+              <button class="tab active" onclick="showTab('all')">All Files</button>
+              <button class="tab" onclick="showTab('duplicates')">Duplicates</button>
+              <button class="tab" onclick="showTab('large')">Large Files</button>
+            </div>
+            <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn">Delete Selected (0)</button>
+          </div>
+          <p id="scanSummary" style="margin-bottom:15px; color:#666;"></p>
+          <div id="fileGrid" class="file-grid"></div>
+        </div>
+      </div>
 
-  selectedFiles.clear();
-  scan();
-}
+    </div>
+  </div>
 
-async function logout() {
-  await fetch('/api/logout', { credentials: 'include' });
-  location.reload();
-}
+  <script>
+    let currentSession = null;
+    let ws = null;
+    let scanData = {};
+    let selectedFiles = new Set();
+    let currentTab = 'all';
+    let currentJobId = null;
 
-checkUser();
-</script>
+    async function init() {
+      const params = new URLSearchParams(window.location.search);
+      const sessionParam = params.get('session');
+      
+      if (sessionParam) {
+        localStorage.setItem('session', sessionParam);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        currentSession = sessionParam;
+        showDashboard();
+      } else {
+        const storedSession = localStorage.getItem('session');
+        if (storedSession) {
+          currentSession = storedSession;
+          showDashboard();
+        } else {
+          document.getElementById('loginSection').style.display = 'block';
+        }
+      }
+    }
+
+    async function login() {
+      const res = await fetch('/api/auth/url');
+      const data = await res.json();
+      window.location.href = data.url;
+    }
+
+    function logout() {
+      localStorage.removeItem('session');
+      window.location.reload();
+    }
+
+    async function showDashboard() {
+      document.getElementById('loginSection').style.display = 'none';
+      document.getElementById('mainHeader').classList.remove('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      
+      connectWebSocket();
+      loadStorage();
+    }
+
+    async function authFetch(url, options = {}) {
+      return fetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          'Content-Type': 'application/json',
+          'x-session': currentSession
+        }
+      });
+    }
+
+    async function loadStorage() {
+      try {
+        const res = await authFetch('/api/storage');
+        if (res.status === 401) return logout();
+        
+        const data = await res.json();
+        const used = data.usageInDrive || data.usage || 0;
+        const limit = data.limit || 15e9;
+        const percent = ((used / limit) * 100).toFixed(1);
+        
+        document.getElementById('storageUsedBar').style.width = `${percent}%`;
+        document.getElementById('storageText').innerText = `${formatBytes(used)} used of ${formatBytes(limit)} (${percent}%)`;
+      } catch (e) {
+        console.error("Failed to load storage", e);
+      }
+    }
+
+    function connectWebSocket() {
+      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${wsProtocol}//${location.host}`);
+
+      ws.onopen = () => console.log("WebSocket connected");
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        handleWsMessage(msg);
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket closed, reconnecting...");
+        setTimeout(connectWebSocket, 2000);
+      };
+    }
+
+    function handleWsMessage(msg) {
+      if (msg.type === 'jobStarted') {
+        currentJobId = msg.jobId;
+        document.getElementById('startScanBtn').classList.add('hidden');
+        document.getElementById('cancelScanBtn').classList.remove('hidden');
+        document.getElementById('progressSection').style.display = 'block';
+        document.getElementById('resultsSection').classList.add('hidden');
+      } 
+      else if (msg.type === 'update') {
+        updateProgress(msg);
+      }
+    }
+
+    function startScan() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return alert("Connecting...");
+      
+      ws.send(JSON.stringify({
+        type: 'startScan',
+        session: currentSession
+      }));
+    }
+
+    function cancelScan() {
+      if (currentJobId && ws) {
+        ws.send(JSON.stringify({
+          type: 'cancelScan',
+          jobId: currentJobId
+        }));
+        resetScanUI();
+      }
+    }
+
+    function updateProgress(msg) {
+      document.getElementById('progressStage').innerText = msg.stage;
+      document.getElementById('progressFill').style.width = `${msg.progress}%`;
+
+      if (msg.stage === 'Complete') {
+        scanData = msg.data || {};
+        resetScanUI();
+        showResults();
+      } 
+      else if (msg.stage === 'Error') {
+        alert("Scan Error: " + msg.error);
+        resetScanUI();
+      }
+    }
+
+    function resetScanUI() {
+      document.getElementById('startScanBtn').classList.remove('hidden');
+      document.getElementById('cancelScanBtn').classList.add('hidden');
+      currentJobId = null;
+    }
+
+    function showResults() {
+      document.getElementById('resultsSection').classList.remove('hidden');
+      
+      const total = scanData.total || 0;
+      const dups = scanData.duplicates?.length || 0;
+      const large = scanData.large?.length || 0;
+      
+      document.getElementById('scanSummary').innerText = 
+        `Found ${total} files. ${dups} duplicates. ${large} large files (>100MB).`;
+      
+      renderFiles();
+    }
+
+    function renderFiles() {
+      const grid = document.getElementById('fileGrid');
+      grid.innerHTML = '';
+      selectedFiles.clear();
+      updateDeleteBtn();
+
+      let files = [];
+      if (currentTab === 'all') files = scanData.files || [];
+      else if (currentTab === 'duplicates') files = scanData.duplicates || [];
+      else if (currentTab === 'large') files = scanData.large || [];
+
+      const displayFiles = files.slice(0, 200);
+
+      if (displayFiles.length === 0) {
+        grid.innerHTML = '<p style="color:#666">No files in this category.</p>';
+        return;
+      }
+
+      displayFiles.forEach(file => {
+        const card = document.createElement('div');
+        card.className = 'file-card';
+        
+        const icon = getIcon(file.mimeType);
+        const checked = selectedFiles.has(file.id) ? 'checked' : '';
+
+        card.innerHTML = `
+          <input type="checkbox" ${checked} onchange="toggleSelect('${file.id}', this.checked)">
+          <span class="file-icon">${icon}</span>
+          <div class="file-name" title="${file.name}">${file.name}</div>
+          <div class="file-meta">${formatBytes(file.size)}</div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function showTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      renderFiles();
+    }
+
+    function toggleSelect(id, isChecked) {
+      if (isChecked) selectedFiles.add(id);
+      else selectedFiles.delete(id);
+      updateDeleteBtn();
+    }
+
+    function updateDeleteBtn() {
+      document.getElementById('deleteBtn').innerText = `Delete Selected (${selectedFiles.size})`;
+    }
+
+    async function deleteSelected() {
+      if (selectedFiles.size === 0) return;
+      if (!confirm(`Delete ${selectedFiles.size} files permanently?`)) return;
+
+      try {
+        const res = await authFetch('/api/files/delete', {
+          method: 'POST',
+          body: JSON.stringify({ fileIds: [...selectedFiles] })
+        });
+        
+        if (res.ok) {
+          alert("Files deleted successfully");
+          startScan();
+        } else {
+          alert("Delete failed");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function getIcon(mime) {
+      if (!mime) return '📄';
+      if (mime.includes('image')) return '🖼️';
+      if (mime.includes('video')) return '🎬';
+      if (mime.includes('audio')) return '🎵';
+      if (mime.includes('pdf')) return '📕';
+      if (mime.includes('zip') || mime.includes('rar')) return '🗜️';
+      return '📄';
+    }
+
+    init();
+  </script>
+</body>
+</html>
