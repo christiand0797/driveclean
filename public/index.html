@@ -952,9 +952,12 @@
           </div>
           <p id="progressText" style="color:var(--text-dim)">Preparing scanner...</p>
           <div class="keyboard-shortcuts" style="justify-content:center;margin-top:30px">
-            <div class="key-hint"><span class="key">Space</span> Start/Stop</div>
-            <div class="key-hint"><span class="key">A</span> Select All</div>
+            <div class="key-hint"><span class="key">Space</span> Scan</div>
+            <div class="key-hint"><span class="key">S</span> Scan</div>
+            <div class="key-hint"><span class="key">Ctrl+A</span> All</div>
             <div class="key-hint"><span class="key">Del</span> Delete</div>
+            <div class="key-hint"><span class="key">E</span> Export</div>
+            <div class="key-hint"><span class="key">1-6</span> Tabs</div>
             <div class="key-hint"><span class="key">Esc</span> Cancel</div>
           </div>
         </div>
@@ -1082,11 +1085,11 @@
     }
 
     function handleKeyboard(e) {
-      if (e.target.tagName === 'INPUT') return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       
       if (e.code === 'Space') {
         e.preventDefault();
-        if (document.getElementById('startScanBtn').classList.contains('hidden')) {
+        if (document.getElementById('cancelScanBtn').classList.contains('hidden') === false) {
           cancelScan();
         } else {
           startScan();
@@ -1095,14 +1098,26 @@
         e.preventDefault();
         selectAllCategory();
       } else if (e.code === 'Delete') {
-        deleteSelected();
+        e.preventDefault();
+        if (selectedFiles.size > 0) deleteSelected();
       } else if (e.code === 'Escape') {
         if (document.getElementById('deleteModal').classList.contains('active')) {
           closeDeleteModal();
         } else {
           cancelScan();
         }
-      }
+      } else if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        startScan();
+      } else if (e.code === 'KeyE') {
+        e.preventDefault();
+        exportCSV();
+      } else if (e.code === 'Digit1') showTab('all');
+      else if (e.code === 'Digit2') showTab('large');
+      else if (e.code === 'Digit3') showTab('duplicates');
+      else if (e.code === 'Digit4') showTab('old');
+      else if (e.code === 'Digit5') showTab('empty');
+      else if (e.code === 'Digit6') showTab('trash');
     }
 
     async function login() {
