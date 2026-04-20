@@ -1,6 +1,6 @@
 # DriveClean
 
-Open source Google Drive cleanup app inspired by Filerev.
+Open source Google Drive cleanup app built for fast, safe storage cleanup.
 
 ## What it does
 
