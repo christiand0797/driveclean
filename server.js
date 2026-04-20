@@ -478,7 +478,6 @@ async function runDriveScan(jobId, ws) {
 
     let totalFiles = 0;
     let totalSize = 0;
-    let pageToken = null;
     
     const nameMap = new Map();
     const extMap = new Map();
@@ -491,62 +490,56 @@ async function runDriveScan(jobId, ws) {
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-    job.stage = "Scanning Drive";
+job.stage = "Scanning Drive";
     pushUpdate(jobId, ws, job);
 
-    const pageSize = 100;
-    let nextPageTokens = [null];
+    let pageToken = null;
+    let batchNum = 0;
+    const maxFiles = 50000;
 
-    do {
+    while (totalFiles < maxFiles) {
       if (job.cancel) return;
-
-const futures = nextPageTokens.slice(0, 5).map(token => 
-        retryRequest(() => drive.files.list({
-          pageSize: pageSize,
-          fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime)',
-          q: "trashed=false",
-          pageToken: token
-        }))
-      );
-
-      const results = await Promise.all(futures);
       
-      for (const r of results) {
-        if (r?.data?.files) {
-          r.data.files.forEach(f => {
-            const size = Number(f.size || 0);
-            totalFiles++;
-            totalSize += size;
+      batchNum++;
+      const r = await retryRequest(() => drive.files.list({
+        pageSize: 100,
+        fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime)',
+        q: "trashed=false",
+        pageToken
+      }));
 
-            const count = nameMap.get(f.name) || 0;
-            nameMap.set(f.name, count + 1);
+      const files = r.data.files || [];
+      if (files.length === 0) break;
 
-            if (size > 100 * 1024 * 1024) largeFiles.push(f);
-            if (size === 0) emptyFiles.push(f); 
+      for (const f of files) {
+        const size = Number(f.size || 0);
+        totalFiles++;
+        totalSize += size;
 
-            if (f.modifiedTime) {
-              if (new Date(f.modifiedTime) < oneYearAgo) oldFiles.push(f);
-            }
+        const count = nameMap.get(f.name) || 0;
+        nameMap.set(f.name, count + 1);
 
-            const ext = f.name.split('.').pop()?.toLowerCase() || 'none';
-            extMap.set(ext, (extMap.get(ext) || 0) + 1);
-            
-            const mimeCat = f.mimeType?.split('/')[0] || 'other';
-            mimeMap.set(mimeCat, (mimeMap.get(mimeCat) || 0) + 1);
-          });
+        if (size > 100 * 1024 * 1024) largeFiles.push(f);
+        if (size === 0) emptyFiles.push(f);
+
+        if (f.modifiedTime && new Date(f.modifiedTime) < oneYearAgo) {
+          oldFiles.push(f);
         }
+
+        const ext = (f.name.split('.').pop() || '').toLowerCase();
+        extMap.set(ext, (extMap.get(ext) || 0) + 1);
+        
+        const mimeCat = f.mimeType?.split('/')[0] || 'other';
+        mimeMap.set(mimeCat, (mimeMap.get(mimeCat) || 0) + 1);
       }
 
-      nextPageTokens = results
-        .filter(r => r.data.nextPageToken)
-        .map(r => r.data.nextPageToken);
+      pageToken = r.data.nextPageToken;
+      if (!pageToken) break;
 
-      if (nextPageTokens.length === 0) break;
-
-      job.progress = Math.min(60, (totalFiles / 20000) * 60); 
+      job.progress = Math.min(60, (totalFiles / maxFiles) * 60);
       job.stage = `Scanned ${totalFiles.toLocaleString()} files`;
       pushUpdate(jobId, ws, job);
-    } while (nextPageTokens.length > 0);
+    }
 
     job.stage = "Scanning Trash";
     job.progress = 85;
