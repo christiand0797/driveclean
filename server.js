@@ -458,7 +458,6 @@ async function runDriveScan(jobId, ws) {
     let pageToken = null;
     
     const nameMap = new Map();
-    const sizeMap = new Map();
     const largeFiles = [];
     const oldFiles = [];
     const emptyFiles = [];
@@ -472,48 +471,13 @@ async function runDriveScan(jobId, ws) {
     job.stage = "Scanning Drive";
     pushUpdate(jobId, ws, job);
 
-    const batchSize = 1000;
     const pageSize = 100;
-    let batchPromises = [];
-    let batchPageTokens = [null];
-
-    async function processBatch(results) {
-      for (const r of results) {
-        if (!r?.data?.files) continue;
-        const files = r.data.files;
-        
-        files.forEach(f => {
-          const size = Number(f.size || 0);
-          totalFiles++;
-          totalSize += size;
-
-          const count = nameMap.get(f.name) || 0;
-          nameMap.set(f.name, count + 1);
-
-          if (size > 100 * 1024 * 1024) largeFiles.push(f);
-          if (size === 0) emptyFiles.push(f); 
-
-          if (f.modifiedTime) {
-            if (new Date(f.modifiedTime) < oneYearAgo) oldFiles.push(f);
-          }
-
-          if (f.permissions && f.permissions.length > 1) {
-            sharedFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime, shared: true });
-          }
-
-          if (f.owners && f.owners.length === 0) {
-            orphanFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime });
-          }
-        });
-
-        totalFiles += files.length;
-      }
-    }
+    let nextPageTokens = [null];
 
     do {
       if (job.cancel) return;
 
-      const futures = batchPageTokens.slice(0, 5).map(token => 
+      const futures = nextPageTokens.slice(0, 5).map(token => 
         retryRequest(() => drive.files.list({
           pageSize: pageSize,
           fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime,owners,permissions)',
@@ -552,16 +516,16 @@ async function runDriveScan(jobId, ws) {
         }
       }
 
-      batchPageTokens = results
+      nextPageTokens = results
         .filter(r => r.data.nextPageToken)
         .map(r => r.data.nextPageToken);
 
-      if (batchPageTokens.length === 0) break;
+      if (nextPageTokens.length === 0) break;
 
       job.progress = Math.min(60, (totalFiles / 20000) * 60); 
       job.stage = `Scanned ${totalFiles.toLocaleString()} files`;
       pushUpdate(jobId, ws, job);
-    } while (batchPageTokens.length > 0);
+    } while (nextPageTokens.length > 0);
 
     job.stage = "Scanning Trash";
     job.progress = 85;
