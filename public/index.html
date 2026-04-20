@@ -847,6 +847,14 @@
               <div class="quick-stat-value" id="quickSocial">0</div>
               <div class="quick-stat-label">Social</div>
             </div>
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="quickOldest">--</div>
+              <div class="quick-stat-label">Oldest</div>
+            </div>
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="quickNewest">--</div>
+              <div class="quick-stat-label">Newest</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1248,6 +1256,14 @@
             <span style="color:var(--secondary);font-family:'JetBrains Mono',monospace">${formatBytes(size)}</span>
           </div>`
         ).join('');
+      }
+
+      const oldFiles = data.old || [];
+      if (oldFiles.length > 0) {
+        const oldest = oldFiles[0];
+        document.getElementById('quickOldest').innerText = oldest.modifiedTime ? new Date(oldest.modifiedTime).toLocaleDateString() : '--';
+        const newest = [...oldFiles].reverse()[0];
+        document.getElementById('quickNewest').innerText = newest.modifiedTime ? new Date(newest.modifiedTime).toLocaleDateString() : '--';
       }
     }
 
