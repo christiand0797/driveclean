@@ -1,57 +1,51 @@
 # DriveClean Pro
 
-The ultimate Google Drive, Photos & Gmail cleanup tool with AI-powered analysis.
+The ultimate Google Drive, Photos & Gmail cleanup tool.
 
 ## Features
 
 ### Scanner Types
-- **Drive Scan** - Full Drive analysis with parallel processing (5x faster)
+- **Drive Scan** - Full Drive analysis with parallel processing
 - **Gmail Scan** - Find promotions & social emails for cleanup
 - **Photos Scan** - Find large videos in Google Photos
 
 ### File Analysis
 - **Large Files** - Files over 100MB
 - **Duplicates** - Files with same name
-- **True Duplicates** - Content-based MD5 hash detection
 - **Old Files** - Not modified in 1+ year
 - **Empty Files** - Zero-byte files
-- **Shared Files** - Files shared with others
-- **Public Files** - Shared with anyone (security risk)
-- **Orphaned Files** - Files without owners
 - **Trash** - Files in trash
 
 ### Analytics
-- File type pie chart (conic gradient)
+- File type pie chart
 - File extension breakdown
 - MIME type breakdown
-- Folder size analysis
 - Oldest/newest file tracking
 - Gmail promotions & social count
-- Scan history (last 10 scans)
 
 ### Actions
 - One-click delete
 - Batch delete with progress modal
-- **Undo/Restore** - Restore deleted files
+- Undo/Restore - Restore deleted files
 - Empty trash
 - Gmail bulk cleanup
 - Keep newest/oldest quick actions
 - Export to CSV, JSON
-- **Print Report** - Print-friendly export
+- Print Report
 - Size filters
-- **Bulk Select** - Quick select dropdown
+- Bulk Select
 - File preview modal
 
 ### UI/UX
 - Cyberpunk dark theme
 - Light mode toggle
-- Real-time progress with rate limit indicator
+- Real-time progress
 - Storage overview with warnings
 - Sound notifications
 - Keyboard shortcuts
 - PWA installable
 - Mobile optimized
-- Human-readable dates ("2 weeks ago")
+- Human-readable dates
 
 ## Quick Start
 
@@ -80,10 +74,10 @@ Open http://localhost:3000
 3. New → Web Service
 4. Connect GitHub repo
 5. Set Environment Variables:
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-   - `REDIRECT_URI`
-   - `PORT=3000`
+   - GOOGLE_CLIENT_ID
+   - GOOGLE_CLIENT_SECRET
+   - REDIRECT_URI
+   - PORT=3000
 6. Deploy!
 
 ## Google OAuth Setup
@@ -100,15 +94,6 @@ Open http://localhost:3000
    - Google Drive API
    - Gmail API
    - Photos Library API
-
-## Tech Stack
-
-- Node.js + Express
-- WebSocket for real-time updates
-- Google APIs (Drive, Photos, Gmail)
-- OAuth 2.0 with AES-256 encryption
-- Parallel API requests (5x faster)
-- PWA with service worker
 
 ## License
 
