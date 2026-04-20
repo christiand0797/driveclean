@@ -486,15 +486,10 @@ async function runDriveScan(jobId, ws) {
     const oldFiles = [];
     const emptyFiles = [];
     const trashFiles = [];
-    const sharedFiles = [];
-    const orphanFiles = [];
-    const publicFiles = [];
     const mimeMap = new Map();
     
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-    const folderSizeMap = new Map();
 
     job.stage = "Scanning Drive";
     pushUpdate(jobId, ws, job);
@@ -505,10 +500,10 @@ async function runDriveScan(jobId, ws) {
     do {
       if (job.cancel) return;
 
-      const futures = nextPageTokens.slice(0, 5).map(token => 
+const futures = nextPageTokens.slice(0, 5).map(token => 
         retryRequest(() => drive.files.list({
           pageSize: pageSize,
-          fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime,owners,permissions,parents)',
+          fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime)',
           q: "trashed=false",
           pageToken: token
         }))
@@ -533,29 +528,11 @@ async function runDriveScan(jobId, ws) {
               if (new Date(f.modifiedTime) < oneYearAgo) oldFiles.push(f);
             }
 
-            if (f.permissions && f.permissions.length > 1) {
-              sharedFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime, shared: true });
-            }
-
-            const isPublic = f.permissions?.some(p => p.type === 'anyone');
-            if (isPublic) {
-              publicFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime, public: true });
-            }
-
-            if (f.owners && f.owners.length === 0) {
-              orphanFiles.push({ id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, modifiedTime: f.modifiedTime });
-            }
-
             const ext = f.name.split('.').pop()?.toLowerCase() || 'none';
             extMap.set(ext, (extMap.get(ext) || 0) + 1);
             
             const mimeCat = f.mimeType?.split('/')[0] || 'other';
             mimeMap.set(mimeCat, (mimeMap.get(mimeCat) || 0) + 1);
-
-            if (f.parents && f.parents.length > 0) {
-              const parentId = f.parents[0];
-              folderSizeMap.set(parentId, (folderSizeMap.get(parentId) || 0) + size);
-            }
           });
         }
       }
@@ -570,14 +547,6 @@ async function runDriveScan(jobId, ws) {
       job.stage = `Scanned ${totalFiles.toLocaleString()} files`;
       pushUpdate(jobId, ws, job);
     } while (nextPageTokens.length > 0);
-
-    job.stage = "Analyzing Folders";
-    job.progress = 80;
-    pushUpdate(jobId, ws, job);
-
-    const folderSizes = Array.from(folderSizeMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
 
     job.stage = "Scanning Trash";
     job.progress = 85;
@@ -616,33 +585,6 @@ async function runDriveScan(jobId, ws) {
       if (count > 1) duplicateNames.push({ name, count });
     }
 
-    job.stage = "Computing content hashes";
-    job.progress = 90;
-    pushUpdate(jobId, ws, job);
-
-    const contentHashes = new Map();
-    const potentialDupes = largeFiles.filter(f => f.size > 1024 * 1024).slice(0, 100);
-    
-    for (const file of potentialDupes) {
-      if (job.cancel) return;
-      try {
-        const metadata = await retryRequest(() => drive.files.get({ fileId: file.id, fields: 'md5Checksum,size,name,mimeType,modifiedTime' }));
-        const hash = metadata.data.md5Checksum;
-        if (hash) {
-          const existing = contentHashes.get(hash) || [];
-          existing.push({ id: file.id, name: file.name, size: Number(file.size), mimeType: file.mimeType, modifiedTime: file.modifiedTime, md5: hash });
-          contentHashes.set(hash, existing);
-        }
-      } catch (e) {}
-    }
-
-    const contentDupes = [];
-    for (const [hash, files] of contentHashes.entries()) {
-      if (files.length > 1) {
-        files.forEach(f => contentDupes.push(f));
-      }
-    }
-
     job.progress = 100;
     job.stage = "Complete";
     
@@ -657,13 +599,8 @@ async function runDriveScan(jobId, ws) {
       old: oldFiles.slice(0, 500),
       empty: emptyFiles.slice(0, 500),
       trash: trashFiles.slice(0, 500),
-      shared: sharedFiles.slice(0, 500),
-      orphan: orphanFiles.slice(0, 500),
-      public: publicFiles.slice(0, 500),
-      contentDupes: contentDupes.slice(0, 500),
       extensions: Array.from(extMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 20),
-      mimeTypes: Array.from(mimeMap.entries()).sort((a, b) => b[1] - a[1]),
-      folderSizes: folderSizes
+      mimeTypes: Array.from(mimeMap.entries()).sort((a, b) => b[1] - a[1])
     };
 
     pushUpdate(jobId, ws, job);
