@@ -21,6 +21,7 @@ The ultimate Google Drive, Photos & Gmail cleanup tool with AI-powered analysis.
 - **Trash** - Files in trash
 
 ### Analytics
+- File type pie chart (conic gradient)
 - File extension breakdown
 - MIME type breakdown
 - Folder size analysis
@@ -31,17 +32,20 @@ The ultimate Google Drive, Photos & Gmail cleanup tool with AI-powered analysis.
 ### Actions
 - One-click delete
 - Batch delete with progress modal
+- **Undo/Restore** - Restore deleted files
 - Empty trash
 - Gmail bulk cleanup
 - Keep newest/oldest quick actions
-- Export to CSV & JSON
+- Export to CSV, JSON
+- **Print Report** - Print-friendly export
 - Size filters
+- **Bulk Select** - Quick select dropdown
 - File preview modal
 
 ### UI/UX
 - Cyberpunk dark theme
 - Light mode toggle
-- Real-time progress
+- Real-time progress with rate limit indicator
 - Storage overview with warnings
 - Sound notifications
 - Keyboard shortcuts
