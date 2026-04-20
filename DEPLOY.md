@@ -1,85 +1,57 @@
 # Deploy Guide
 
-## Quick Deploy
+## Render setup
 
-```bash
-npm install
-npm start
-```
+1. Push this repository to GitHub.
+2. Create a new Render Web Service.
+3. Use:
+   - Build command: `npm install`
+   - Start command: `node server.js`
+4. Add these environment variables:
 
-Open http://localhost:3000
+| Variable | Purpose |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `REDIRECT_URI` | Full callback URL, e.g. `https://your-app.onrender.com/api/auth/callback` |
+| `ENCRYPTION_KEY` | Stable secret used to encrypt stored session tokens |
+| `PORT` | Optional; Render sets this automatically |
+| `SCAN_LIMIT` | Optional upper bound for active-file scan payload size |
 
-## Running on Render
+## OAuth checklist
 
-### 1. GitHub Setup
-```bash
-git add .
-git commit -m "DriveClean Pro v2.0"
-git push origin main
-```
+Make sure the Google OAuth client includes both your local and hosted callback URLs:
 
-### 2. Render Setup
-1. Go to https://render.com
-2. New → Web Service
-3. Connect GitHub repo
-4. Configure:
-   - Build Command: `npm install`
-   - Start Command: `node server.js`
-5. Add Environment Variables:
+- `http://localhost:3000/api/auth/callback`
+- `https://your-app.onrender.com/api/auth/callback`
 
-| Variable | Value | Example |
-|---------|-------|---------|
-| GOOGLE_CLIENT_ID | Your OAuth Client ID | xxx.apps.googleusercontent.com |
-| GOOGLE_CLIENT_SECRET | Your OAuth Secret | xxxx |
-| REDIRECT_URI | Your Render URL | https://driveclean.onrender.com/api/auth/callback |
-| PORT | 3000 | 3000 |
-| ENCRYPTION_KEY | Random 32-char key | (auto-generated) |
+And both origins:
 
-### 3. Auto-Deploy
-Enable "Auto-Deploy" in Render settings for automatic deployments on GitHub push.
+- `http://localhost:3000`
+- `https://your-app.onrender.com`
 
-## Google OAuth Setup
+## Runtime behavior
 
-### Create Credentials
-1. Go to https://console.cloud.google.com/apis/credentials
-2. Create Credentials → OAuth client ID
-3. Application type: Web application
-4. Add authorized origins:
-   - `http://localhost:3000`
-   - `https://your-app.onrender.com`
-5. Add authorized redirect URIs:
-   - `http://localhost:3000/api/auth/callback`
-   - `https://your-app.onrender.com/api/auth/callback`
-
-### Enable APIs
-Enable these APIs in Google Cloud Console:
-- Google Drive API
-- Gmail API
-- Photos Library API
+- Sessions are stored in memory and persisted to `sessions.json`
+- OAuth state values are validated server-side before the callback completes
+- Scan results stay in memory per active session for exports and UI refreshes
+- The service worker uses a fresh app-shell cache version (`driveclean-v2`)
 
 ## Troubleshooting
 
-### Login loops back after Google auth
-- Check browser console for JavaScript errors
-- Verify all environment variables set in Render
-- Check Render logs: App → Logs
-- Clear browser cookies and retry
+### Login fails after Google auth
 
-### 503 Service Unavailable
-- Verify environment variables are set correctly
-- Redeploy the service
+- Confirm `REDIRECT_URI` exactly matches the Google OAuth app
+- Confirm the deployed site origin is listed in Google Cloud
+- Check Render logs for OAuth or environment variable errors
 
-### Can't see all files
-- First scan takes time (parallel processing)
-- Refresh to scan again
+### Scans complete but categories look empty
 
-### Session expired
-- Clear browser cookies
-- Log in again
+- Re-run a Drive scan after deploying the latest code
+- Confirm the account granted Drive metadata permissions
+- Increase `SCAN_LIMIT` if the account is extremely large and the scan is being capped
 
-## Security Notes
+### The app looks stale after deploy
 
-- Tokens encrypted with AES-256
-- No persistent storage of credentials
-- Sessions stored in memory + JSON file
-- Security headers enabled (X-Frame-Options, CSP)
+- Hard refresh once so the browser swaps to the new service worker cache
+- If needed, unregister the old service worker in browser devtools and reload

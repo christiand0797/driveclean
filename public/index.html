@@ -950,6 +950,26 @@
           <div class="stat-number" id="statHidden">0</div>
           <div class="stat-label">Hidden</div>
         </div>
+        <div class="stat-card" onclick="showCategory('temporary')" data-category="temporary">
+          <div class="stat-icon">🧹</div>
+          <div class="stat-number" id="statTemporary">0</div>
+          <div class="stat-label">Temporary</div>
+        </div>
+        <div class="stat-card" onclick="showCategory('emptyFolders')" data-category="emptyFolders">
+          <div class="stat-icon">📂</div>
+          <div class="stat-number" id="statEmptyFolders">0</div>
+          <div class="stat-label">Empty Folders</div>
+        </div>
+        <div class="stat-card" onclick="showCategory('ownedByOthers')" data-category="ownedByOthers">
+          <div class="stat-icon">🙋</div>
+          <div class="stat-number" id="statOwnedByOthers">0</div>
+          <div class="stat-label">Owned By Others</div>
+        </div>
+        <div class="stat-card" onclick="showCategory('folders')" data-category="folders">
+          <div class="stat-icon">🗂️</div>
+          <div class="stat-number" id="statFolders">0</div>
+          <div class="stat-label">Folders</div>
+        </div>
       </div>
 
 <div class="card">
@@ -987,7 +1007,7 @@
             <div class="key-hint"><span class="key">Ctrl+A</span> All</div>
             <div class="key-hint"><span class="key">Del</span> Delete</div>
             <div class="key-hint"><span class="key">E</span> Export</div>
-            <div class="key-hint"><span class="key">1-6</span> Tabs</div>
+            <div class="key-hint"><span class="key">1-9</span> Tabs</div>
             <div class="key-hint"><span class="key">Esc</span> Cancel</div>
           </div>
         </div>
@@ -1032,8 +1052,15 @@
             <button class="tab" onclick="showTab('large')" data-tab="large">Large</button>
             <button class="tab" onclick="showTab('duplicates')" data-tab="duplicates">Duplicates</button>
             <button class="tab" onclick="showTab('old')" data-tab="old">Old</button>
-<button class="tab" onclick="showTab('empty')" data-tab="empty">Empty</button>
+            <button class="tab" onclick="showTab('empty')" data-tab="empty">Empty</button>
+            <button class="tab" onclick="showTab('emptyFolders')" data-tab="emptyFolders">Empty Folders</button>
             <button class="tab" onclick="showTab('hidden')" data-tab="hidden">Hidden</button>
+            <button class="tab" onclick="showTab('temporary')" data-tab="temporary">Temporary</button>
+            <button class="tab" onclick="showTab('shared')" data-tab="shared">Shared</button>
+            <button class="tab" onclick="showTab('ownedByOthers')" data-tab="ownedByOthers">Owned By Others</button>
+            <button class="tab" onclick="showTab('orphan')" data-tab="orphan">Orphaned</button>
+            <button class="tab" onclick="showTab('public')" data-tab="public">Public</button>
+            <button class="tab" onclick="showTab('folders')" data-tab="folders">Folders</button>
             <button class="tab" onclick="showTab('trash')" data-tab="trash">Trash</button>
           </div>
 
@@ -1053,6 +1080,15 @@
             </table>
           </div>
 
+          <div id="paginationBar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px">
+            <div id="paginationSummary" style="color:var(--text-dim);font-size:13px">No files loaded</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn btn-secondary btn-sm" onclick="changePage(-1)" id="prevPageBtn">Prev</button>
+              <span id="pageLabel" style="color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-size:12px">Page 1</span>
+              <button class="btn btn-secondary btn-sm" onclick="changePage(1)" id="nextPageBtn">Next</button>
+            </div>
+          </div>
+
           <div id="emptyState" class="empty-state hidden">
             <h2>No files found</h2>
             <p>Run a scan to analyze your Drive, or no files match this category.</p>
@@ -1065,7 +1101,7 @@
 
   <div id="deleteModal" class="modal-overlay">
     <div class="modal">
-      <h3>🗑️ Deleting Files</h3>
+      <h3 id="deleteModalTitle">🗑️ Deleting Files</h3>
       <p id="deleteModalText" style="color:var(--text-dim)">Preparing...</p>
       <div class="modal-progress">
         <div class="modal-progress-bar">
@@ -1104,83 +1140,125 @@
   </div>
 
   <script>
+    const FOLDER_MIME = 'application/vnd.google-apps.folder';
+    const PAGE_SIZE = 100;
+
     let currentSession = null;
     let ws = null;
     let scanData = {};
     let selectedFiles = new Set();
     let currentTab = 'all';
     let currentJobId = null;
-    let allFiles = [];
+    let currentPage = 1;
+    let filteredFiles = [];
+    let visibleFiles = [];
     let recentlyDeleted = [];
+    const fileLookup = new Map();
 
     async function init() {
       const params = new URLSearchParams(window.location.search);
       const sessionParam = params.get('session');
-      
+
       if (sessionParam) {
         localStorage.setItem('session', sessionParam);
         window.history.replaceState({}, document.title, window.location.pathname);
         currentSession = sessionParam;
-        showDashboard();
       } else {
-        const storedSession = localStorage.getItem('session');
-        if (storedSession) {
-          currentSession = storedSession;
-          showDashboard();
-        }
+        currentSession = localStorage.getItem('session');
       }
-      
+
+      applyTheme(localStorage.getItem('theme') === 'light' ? 'light' : 'dark');
       document.addEventListener('keydown', handleKeyboard);
-      
+
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').catch(() => {});
       }
+
+      if (currentSession) {
+        showDashboard();
+      }
     }
 
-    function handleKeyboard(e) {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      
-      if (e.code === 'Space') {
-        e.preventDefault();
-        if (document.getElementById('cancelScanBtn').classList.contains('hidden') === false) {
-          cancelScan();
-        } else {
-          startScan();
-        }
-      } else if (e.code === 'KeyA' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
+    function handleKeyboard(event) {
+      if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT') {
+        return;
+      }
+
+      if (event.code === 'Space') {
+        event.preventDefault();
+        if (currentJobId) cancelScan();
+        else startScan('drive');
+        return;
+      }
+
+      if (event.code === 'KeyS' && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        if (currentJobId) cancelScan();
+        else startScan('drive');
+        return;
+      }
+
+      if (event.code === 'KeyA' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
         selectAllCategory();
-      } else if (e.code === 'Delete') {
-        e.preventDefault();
-        if (selectedFiles.size > 0) deleteSelected();
-      } else if (e.code === 'Escape') {
-        if (document.getElementById('deleteModal').classList.contains('active')) {
+        return;
+      }
+
+      if (event.code === 'Delete' && selectedFiles.size > 0) {
+        event.preventDefault();
+        deleteSelected();
+        return;
+      }
+
+      if (event.code === 'KeyE') {
+        event.preventDefault();
+        exportCSV();
+        return;
+      }
+
+      if (event.code === 'Escape') {
+        if (document.getElementById('previewModal').classList.contains('active')) {
+          closePreviewModal();
+        } else if (document.getElementById('deleteModal').classList.contains('active')) {
           closeDeleteModal();
-        } else {
+        } else if (currentJobId) {
           cancelScan();
         }
-      } else if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        startScan();
-      } else if (e.code === 'KeyE') {
-        e.preventDefault();
-        exportCSV();
-      } else if (e.code === 'Digit1') showTab('all');
-      else if (e.code === 'Digit2') showTab('large');
-      else if (e.code === 'Digit3') showTab('duplicates');
-      else if (e.code === 'Digit4') showTab('old');
-      else if (e.code === 'Digit5') showTab('empty');
-      else if (e.code === 'Digit6') showTab('hidden');
-      else if (e.code === 'Digit7') showTab('trash');
+        return;
+      }
+
+      const tabMap = {
+        Digit1: 'all',
+        Digit2: 'large',
+        Digit3: 'duplicates',
+        Digit4: 'old',
+        Digit5: 'empty',
+        Digit6: 'hidden',
+        Digit7: 'trash',
+        Digit8: 'shared',
+        Digit9: 'folders'
+      };
+
+      const tab = tabMap[event.code];
+      if (tab) {
+        showTab(tab);
+      }
     }
 
     async function login() {
-      const res = await fetch('/api/auth/url');
-      const data = await res.json();
+      const response = await fetch('/api/auth/url');
+      const data = await response.json();
       window.location.href = data.url;
     }
 
-    function logout() {
+    async function logout() {
+      try {
+        if (currentSession) {
+          await authFetch('/api/auth/logout', { method: 'POST' });
+        }
+      } catch {}
+
+      currentSession = null;
       localStorage.removeItem('session');
       window.location.reload();
     }
@@ -1189,34 +1267,55 @@
       document.getElementById('loginSection').style.display = 'none';
       document.getElementById('mainHeader').classList.remove('hidden');
       document.getElementById('dashboard').classList.remove('hidden');
+
       connectWebSocket();
-      loadStorage();
+      await Promise.all([loadSessionInfo(), loadStorage()]);
+    }
+
+    async function loadSessionInfo() {
+      try {
+        const response = await authFetch('/api/session');
+        if (response.status === 401) {
+          await logout();
+          return;
+        }
+
+        const data = await response.json();
+        document.getElementById('userEmail').innerText = data.email || data.name || 'Connected';
+      } catch (error) {
+        console.error(error);
+      }
     }
 
     function connectWebSocket() {
+      if (!currentSession) return;
+
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${wsProtocol}//${location.host}`);
-
-      ws.onopen = () => console.log("WebSocket connected");
 
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.type === 'jobStarted') {
           currentJobId = msg.jobId;
           toggleScanUI(true);
-        } else if (msg.type === 'update') {
+        }
+
+        if (msg.type === 'update') {
           updateProgress(msg);
         }
       };
 
       ws.onclose = () => {
-        console.log("WebSocket closed, reconnecting...");
-        setTimeout(connectWebSocket, 2000);
+        if (currentSession) {
+          setTimeout(connectWebSocket, 2000);
+        }
       };
     }
 
     function toggleScanUI(isScanning) {
       document.getElementById('startScanBtn').classList.toggle('hidden', isScanning);
+      document.getElementById('startGmailBtn').classList.toggle('hidden', isScanning);
+      document.getElementById('startPhotosBtn').classList.toggle('hidden', isScanning);
       document.getElementById('cancelScanBtn').classList.toggle('hidden', !isScanning);
       document.getElementById('progressSection').style.display = isScanning ? 'block' : 'none';
       if (isScanning) {
@@ -1225,79 +1324,105 @@
     }
 
     function startScan(type = 'drive') {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        let msg = { type: 'startScan', session: currentSession };
-        if (type === 'gmail') msg = { type: 'startGmailScan', session: currentSession };
-        else if (type === 'photos') msg = { type: 'startPhotosScan', session: currentSession };
-        ws.send(JSON.stringify(msg));
+      if (!currentSession) return;
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        connectWebSocket();
+        setTimeout(() => startScan(type), 500);
+        return;
       }
+
+      currentPage = 1;
+      const payload = { type: 'startScan', session: currentSession };
+      if (type === 'gmail') payload.type = 'startGmailScan';
+      if (type === 'photos') payload.type = 'startPhotosScan';
+      ws.send(JSON.stringify(payload));
     }
 
     function cancelScan() {
-      if (currentJobId && ws) {
+      if (currentJobId && ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'cancelScan', jobId: currentJobId }));
-        toggleScanUI(false);
       }
+      currentJobId = null;
+      toggleScanUI(false);
     }
 
     function updateProgress(msg) {
-      document.getElementById('progressStage').innerText = msg.stage;
-      document.getElementById('progressFill').style.width = `${msg.progress}%`;
-      
-      const rateIndicator = document.getElementById('rateLimitIndicator');
-      if (msg.stage?.includes('Rate limit')) {
-        rateIndicator.style.display = 'block';
-      } else {
-        rateIndicator.style.display = 'none';
-      }
-      
-      if (msg.progress < 100) {
-        document.getElementById('progressText').innerText = msg.stage;
+      document.getElementById('progressStage').innerText = msg.stage || 'Working...';
+      document.getElementById('progressFill').style.width = `${msg.progress || 0}%`;
+      document.getElementById('progressText').innerText = msg.error || msg.stage || 'Working...';
+      document.getElementById('rateLimitIndicator').style.display = msg.stage?.includes('Rate limit') ? 'block' : 'none';
+
+      if (msg.stage === 'Error') {
+        currentJobId = null;
+        toggleScanUI(false);
+        alert(`Error: ${msg.error}`);
+        return;
       }
 
-      if (msg.stage === 'Complete') {
-        playNotificationSound();
-        
-        if (msg.data) {
-          if (msg.data.total) {
-            scanData = msg.data;
-          } else if (msg.data.gmail) {
-            scanData.gmail = msg.data.gmail;
-            document.getElementById('quickPromos').innerText = (msg.data.gmail.promotions || 0).toLocaleString();
-            document.getElementById('quickSocial').innerText = (msg.data.gmail.social || 0).toLocaleString();
-          } else if (msg.data.photos) {
-            scanData.photos = msg.data.photos;
-          }
-        }
-        
-        if (scanData.total) {
-          showResults();
-          document.getElementById('resultsSection').classList.remove('hidden');
-        } else if (msg.data && (msg.data.gmail || msg.data.photos)) {
-          document.getElementById('resultsSection').classList.add('hidden');
-          alert('Scan complete! Check stats at the top.');
-        }
+      if (msg.stage === 'Canceled') {
+        currentJobId = null;
         toggleScanUI(false);
-        updateStats();
-        loadStorage();
-      } else if (msg.stage === 'Error') {
-        alert("Error: " + msg.error);
-        toggleScanUI(false);
+        return;
       }
+
+      if (msg.stage !== 'Complete') {
+        return;
+      }
+
+      playNotificationSound();
+      currentJobId = null;
+      toggleScanUI(false);
+
+      if (msg.data) {
+        scanData = { ...scanData, ...msg.data };
+      }
+
+      rebuildFileLookup();
+      updateStats();
+      loadStorage();
+
+      if (scanData.files?.length) {
+        showResults();
+      } else if (msg.data?.gmail || msg.data?.photos) {
+        alert('Scan complete. The summary cards have been updated.');
+      }
+    }
+
+    function rebuildFileLookup() {
+      fileLookup.clear();
+      const categories = [
+        scanData.files,
+        scanData.large,
+        scanData.duplicates,
+        scanData.old,
+        scanData.empty,
+        scanData.emptyFolders,
+        scanData.hidden,
+        scanData.orphan,
+        scanData.shared,
+        scanData.ownedByOthers,
+        scanData.public,
+        scanData.temporary,
+        scanData.folderSizes,
+        scanData.trash
+      ];
+
+      categories
+        .filter(Array.isArray)
+        .flat()
+        .forEach((file) => {
+          if (file?.id) {
+            fileLookup.set(file.id, file);
+          }
+        });
     }
 
     function updateStats() {
       const data = scanData;
       const total = data.total || 0;
+      const duplicateGroups = data.duplicateGroups?.length || 0;
       const large = data.large?.length || 0;
-      
-      const history = JSON.parse(localStorage.getItem('scanHistory') || '[]');
-      history.unshift({ timestamp: Date.now(), total, large, dupes: data.duplicates?.length || 0, old: data.old?.length || 0, trash: data.trash?.length || 0 });
-      if (history.length > 10) history.pop();
-      localStorage.setItem('scanHistory', JSON.stringify(history));
-      document.getElementById('lastScanTime').innerText = `Last scan: ${new Date().toLocaleString()}`;
-      
-const dupes = data.duplicates?.length || 0;
       const old = data.old?.length || 0;
       const empty = data.empty?.length || 0;
       const trash = data.trash?.length || 0;
@@ -1305,101 +1430,119 @@ const dupes = data.duplicates?.length || 0;
       const shared = data.shared?.length || 0;
       const orphan = data.orphan?.length || 0;
       const pub = data.public?.length || 0;
-      
+      const temporary = data.temporary?.length || 0;
+      const emptyFolders = data.emptyFolders?.length || 0;
+      const ownedByOthers = data.ownedByOthers?.length || 0;
+      const folders = data.folderSizes?.length || 0;
+
+      const history = JSON.parse(localStorage.getItem('scanHistory') || '[]');
+      history.unshift({
+        timestamp: Date.now(),
+        total,
+        large,
+        duplicates: duplicateGroups,
+        old,
+        trash
+      });
+      localStorage.setItem('scanHistory', JSON.stringify(history.slice(0, 10)));
+      document.getElementById('lastScanTime').innerText = `Last scan: ${new Date().toLocaleString()}`;
+
       document.getElementById('statTotal').innerText = total.toLocaleString();
       document.getElementById('quickTotal').innerText = total.toLocaleString();
       document.getElementById('statLarge').innerText = large.toLocaleString();
-      document.getElementById('statDupes').innerText = dupes.toLocaleString();
-      document.getElementById('quickDupes').innerText = dupes.toLocaleString();
+      document.getElementById('statDupes').innerText = duplicateGroups.toLocaleString();
+      document.getElementById('quickDupes').innerText = duplicateGroups.toLocaleString();
       document.getElementById('statOld').innerText = old.toLocaleString();
       document.getElementById('statEmpty').innerText = empty.toLocaleString();
       document.getElementById('statTrash').innerText = trash.toLocaleString();
       document.getElementById('quickTrash').innerText = trash.toLocaleString();
-      document.getElementById('statShared').innerText = shared?.toLocaleString() || 0;
-      document.getElementById('statOrphan').innerText = orphan?.toLocaleString() || 0;
-      document.getElementById('statPublic').innerText = pub?.toLocaleString() || 0;
-      document.getElementById('statHidden').innerText = hidden?.toLocaleString() || 0;
-      
-      const totalSize = data.totalSize || 0;
-      document.getElementById('quickSize').innerText = formatBytes(totalSize);
-      
-      document.getElementById('emptyTrashBtn').disabled = !(trash > 0);
+      document.getElementById('statShared').innerText = shared.toLocaleString();
+      document.getElementById('statOrphan').innerText = orphan.toLocaleString();
+      document.getElementById('statPublic').innerText = pub.toLocaleString();
+      document.getElementById('statHidden').innerText = hidden.toLocaleString();
+      document.getElementById('statTemporary').innerText = temporary.toLocaleString();
+      document.getElementById('statEmptyFolders').innerText = emptyFolders.toLocaleString();
+      document.getElementById('statOwnedByOthers').innerText = ownedByOthers.toLocaleString();
+      document.getElementById('statFolders').innerText = folders.toLocaleString();
 
-      const extData = data.extensions || [];
+      document.getElementById('quickSize').innerText = formatBytes(data.totalSize || 0);
+      document.getElementById('emptyTrashBtn').disabled = trash === 0;
+
       const extDiv = document.getElementById('extBreakdown');
-      if (extData.length > 0) {
-        extDiv.innerHTML = extData.slice(0, 15).map(([ext, count]) => 
-          `<span class="badge" style="background:rgba(157,78,221,0.2);color:var(--primary);margin:4px 4px 4px 0">${ext} (${count})</span>`
-        ).join('');
-      }
+      extDiv.innerHTML = (data.extensions || [])
+        .slice(0, 18)
+        .map(([ext, count]) => `<span class="badge" style="background:rgba(157,78,221,0.2);color:var(--primary);margin:4px 4px 4px 0">${escapeHtml(ext)} (${count})</span>`)
+        .join('');
 
       const mimeData = data.mimeTypes || [];
       const mimeDiv = document.getElementById('mimeBreakdown');
       const chartDiv = document.getElementById('fileTypeChart');
-      
+      mimeDiv.innerHTML = mimeData
+        .slice(0, 12)
+        .map(([mime, count]) => `<span class="badge" style="background:rgba(0,255,159,0.2);color:var(--secondary);margin:4px 4px 4px 0">${escapeHtml(mime)} (${count})</span>`)
+        .join('');
+
       if (mimeData.length > 0) {
-        mimeDiv.innerHTML = mimeData.map(([mime, count]) => 
-          `<span class="badge" style="background:rgba(0,255,159,0.2);color:var(--secondary);margin:4px 4px 4px 0">${mime} (${count})</span>`
-        ).join('');
-        
-        if (chartDiv) {
-          const total = mimeData.reduce((sum, [,c]) => sum + c, 0);
-          const colors = ['#9d4edd', '#00ff9f', '#00f5ff', '#b5179e', '#ff0055', '#ffbe0b'];
-          let gradient = 'conic-gradient(';
-          let offset = 0;
-          mimeData.slice(0, 5).forEach(([mime, count], i) => {
-            const pct = (count / total) * 100;
-            gradient += `${colors[i % colors.length]} ${offset}% ${offset + pct}%, `;
-            offset += pct;
-          });
-          gradient = gradient.replace(/,\s*$/, ')');
-          chartDiv.style.background = gradient;
-          chartDiv.style.display = 'block';
-        }
+        const totalMime = mimeData.reduce((sum, [, count]) => sum + count, 0);
+        const colors = ['#9d4edd', '#00ff9f', '#00f5ff', '#b5179e', '#ff0055', '#ffbe0b'];
+        let offset = 0;
+        const segments = mimeData.slice(0, 6).map(([, count], index) => {
+          const percent = (count / totalMime) * 100;
+          const segment = `${colors[index % colors.length]} ${offset}% ${offset + percent}%`;
+          offset += percent;
+          return segment;
+        });
+        chartDiv.style.background = `conic-gradient(${segments.join(', ')})`;
+        chartDiv.style.display = 'block';
       }
+
+      const folderDiv = document.getElementById('folderBreakdown');
+      folderDiv.innerHTML = (data.folderSizes || [])
+        .slice(0, 8)
+        .map((folder) => `
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <span style="color:var(--text-dim);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(folder.name)}</span>
+            <span style="color:var(--secondary);font-family:'JetBrains Mono',monospace">${formatBytes(folder.totalSize || folder.size || 0)}</span>
+          </div>
+        `)
+        .join('');
 
       const gmailData = data.gmail || {};
       document.getElementById('quickPromos').innerText = (gmailData.promotions || 0).toLocaleString();
       document.getElementById('quickSocial').innerText = (gmailData.social || 0).toLocaleString();
 
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme === 'light') applyTheme('light');
+      const datedFiles = [...(data.files || [])]
+        .filter((file) => file.modifiedTime)
+        .sort((a, b) => new Date(a.modifiedTime) - new Date(b.modifiedTime));
 
-      const folderData = data.folderSizes || [];
-      const folderDiv = document.getElementById('folderBreakdown');
-      if (folderData.length > 0) {
-        folderDiv.innerHTML = folderData.slice(0, 8).map(([id, size]) => 
-          `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-            <span style="color:var(--text-dim);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${id.substring(0,20)}...</span>
-            <span style="color:var(--secondary);font-family:'JetBrains Mono',monospace">${formatBytes(size)}</span>
-          </div>`
-        ).join('');
-      }
-
-      const oldFiles = data.old || [];
-      if (oldFiles.length > 0) {
-        const oldest = oldFiles[0];
-        document.getElementById('quickOldest').innerText = oldest.modifiedTime ? new Date(oldest.modifiedTime).toLocaleDateString() : '--';
-        const newest = [...oldFiles].reverse()[0];
-        document.getElementById('quickNewest').innerText = newest.modifiedTime ? new Date(newest.modifiedTime).toLocaleDateString() : '--';
-      }
+      document.getElementById('quickOldest').innerText = datedFiles[0]?.modifiedTime
+        ? new Date(datedFiles[0].modifiedTime).toLocaleDateString()
+        : '--';
+      document.getElementById('quickNewest').innerText = datedFiles[datedFiles.length - 1]?.modifiedTime
+        ? new Date(datedFiles[datedFiles.length - 1].modifiedTime).toLocaleDateString()
+        : '--';
     }
 
     async function loadStorage() {
       try {
-        const res = await authFetch('/api/storage');
-        if (res.status === 401) return logout();
-        const data = await res.json();
-        const used = data.usageInDrive || data.usage || 0;
-        const limit = data.limit || 15e9;
-        const percent = ((used / limit) * 100).toFixed(1);
-        document.getElementById('storageUsedBar').style.width = `${Math.min(percent, 100)}%`;
-        
+        const response = await authFetch('/api/storage');
+        if (response.status === 401) {
+          await logout();
+          return;
+        }
+
+        const data = await response.json();
+        const used = Number(data.usageInDrive || data.usage || 0);
+        const limit = Number(data.limit || 15e9);
+        const percent = limit > 0 ? ((used / limit) * 100).toFixed(1) : '0.0';
         const color = percent > 90 ? 'var(--danger)' : percent > 70 ? 'var(--warning)' : 'var(--secondary)';
+
+        document.getElementById('storageUsedBar').style.width = `${Math.min(Number(percent), 100)}%`;
         document.getElementById('storageUsedBar').style.background = color;
-        
         document.getElementById('storageText').innerHTML = `<span style="color:${color}">${formatBytes(used)}</span> of ${formatBytes(limit)} (${percent}%)`;
-      } catch (e) { console.error(e); }
+      } catch (error) {
+        console.error(error);
+      }
     }
 
     function refreshStorage() {
@@ -1411,98 +1554,171 @@ const dupes = data.duplicates?.length || 0;
       renderFiles();
     }
 
-    function showCategory(cat) {
-      currentTab = cat;
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
-      document.querySelector(`[data-tab="${cat}"]`)?.classList.add('active');
-      document.querySelector(`[data-category="${cat}"]`)?.classList.add('active');
+    function setCurrentTab(tab) {
+      currentTab = tab;
+      currentPage = 1;
+
+      document.querySelectorAll('.tab').forEach((item) => item.classList.remove('active'));
+      document.querySelectorAll('.stat-card').forEach((item) => item.classList.remove('active'));
+
+      document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
+      document.querySelector(`[data-category="${tab}"]`)?.classList.add('active');
       renderFiles();
     }
 
+    function showCategory(tab) {
+      setCurrentTab(tab);
+    }
+
     function showTab(tab) {
-      currentTab = tab;
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
-      document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
-      renderFiles();
+      setCurrentTab(tab);
+    }
+
+    function getCategoryFiles(category) {
+      switch (category) {
+        case 'all': return scanData.files || [];
+        case 'large': return scanData.large || [];
+        case 'duplicates': return scanData.duplicates || [];
+        case 'old': return scanData.old || [];
+        case 'empty': return scanData.empty || [];
+        case 'emptyFolders': return scanData.emptyFolders || [];
+        case 'hidden': return scanData.hidden || [];
+        case 'temporary': return scanData.temporary || [];
+        case 'shared': return scanData.shared || [];
+        case 'ownedByOthers': return scanData.ownedByOthers || [];
+        case 'orphan': return scanData.orphan || [];
+        case 'public': return scanData.public || [];
+        case 'folders': return scanData.folderSizes || [];
+        case 'trash': return scanData.trash || [];
+        default: return [];
+      }
+    }
+
+    function getFilteredFiles(category = currentTab) {
+      const search = document.getElementById('searchBox')?.value.toLowerCase().trim() || '';
+      const sizeFilter = document.getElementById('sizeFilter')?.value || 'all';
+      const sortBy = document.getElementById('sortSelect')?.value || 'name';
+      let files = [...getCategoryFiles(category)];
+
+      if (search) {
+        files = files.filter((file) => (file.name || '').toLowerCase().includes(search));
+      }
+
+      if (sizeFilter !== 'all') {
+        const limits = {
+          '10mb': 10 * 1024 * 1024,
+          '100mb': 100 * 1024 * 1024,
+          '500mb': 500 * 1024 * 1024,
+          '1gb': 1024 * 1024 * 1024,
+          'gt1gb': 1024 * 1024 * 1024
+        };
+        const limit = limits[sizeFilter];
+        files = sizeFilter === 'gt1gb'
+          ? files.filter((file) => Number(file.totalSize || file.size || 0) > limit)
+          : files.filter((file) => Number(file.totalSize || file.size || 0) < limit);
+      }
+
+      files.sort((a, b) => {
+        const aSize = Number(a.totalSize || a.size || 0);
+        const bSize = Number(b.totalSize || b.size || 0);
+        const aDate = new Date(a.modifiedTime || 0).getTime();
+        const bDate = new Date(b.modifiedTime || 0).getTime();
+        const aName = a.name || '';
+        const bName = b.name || '';
+
+        if (sortBy === 'size-desc') return bSize - aSize;
+        if (sortBy === 'size-asc') return aSize - bSize;
+        if (sortBy === 'date-desc') return bDate - aDate;
+        if (sortBy === 'date-asc') return aDate - bDate;
+        return aName.localeCompare(bName);
+      });
+
+      return files;
     }
 
     function renderFiles() {
       const tbody = document.getElementById('fileTableBody');
-      const empty = document.getElementById('emptyState');
-      tbody.innerHTML = '';
-      selectedFiles.clear();
+      const emptyState = document.getElementById('emptyState');
 
-      let files = getCategoryFiles(currentTab);
-      
-      if (!files || files.length === 0) {
+      filteredFiles = getFilteredFiles();
+      const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
+      currentPage = Math.min(currentPage, totalPages);
+
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const end = start + PAGE_SIZE;
+      visibleFiles = filteredFiles.slice(start, end);
+
+      tbody.innerHTML = '';
+
+      if (filteredFiles.length === 0) {
         tbody.classList.add('hidden');
-        empty.classList.remove('hidden');
+        emptyState.classList.remove('hidden');
+        renderPagination(0, totalPages);
+        updateDeleteBtn();
         return;
       }
 
       tbody.classList.remove('hidden');
-      empty.classList.add('hidden');
+      emptyState.classList.add('hidden');
 
-      const sortBy = document.getElementById('sortSelect').value;
-      if (sortBy === 'size-desc') files.sort((a, b) => (b.size || 0) - (a.size || 0));
-      else if (sortBy === 'size-asc') files.sort((a, b) => (a.size || 0) - (b.size || 0));
-      else if (sortBy === 'date-desc') files.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
-      else if (sortBy === 'date-asc') files.sort((a, b) => new Date(a.modifiedTime) - new Date(b.modifiedTime));
-      else files.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
-      allFiles = files;
-
-      const search = document.getElementById('searchBox').value.toLowerCase();
-      if (search) files = files.filter(f => (f.name || '').toLowerCase().includes(search));
-
-      const sizeFilter = document.getElementById('sizeFilter')?.value || 'all';
-      if (sizeFilter !== 'all') {
-        const limits = { '10mb': 10*1024*1024, '100mb': 100*1024*1024, '500mb': 500*1024*1024, '1gb': 1024*1024*1024, 'gt1gb': 1024*1024*1024 };
-        const limit = limits[sizeFilter];
-        if (sizeFilter === 'gt1gb') {
-          files = files.filter(f => Number(f.size) > limit);
-        } else {
-          files = files.filter(f => Number(f.size) < limit);
-        }
-      }
-
-      const displayFiles = files.slice(0, 500);
-      
-      displayFiles.forEach(file => {
+      visibleFiles.forEach((file) => {
         const tr = document.createElement('tr');
-        const checked = selectedFiles.has(file.id) ? 'checked' : '';
-        const trashed = file.trashed ? ' (trashed)' : '';
+        const sizeValue = Number(file.totalSize || file.size || 0);
+        const duplicateBadge = file.duplicateCount ? `<span class="badge badge-warning">${file.duplicateCount} copies</span>` : '';
+        const flags = [
+          file.public ? `<span class="badge badge-danger">Public</span>` : '',
+          file.shared && !file.public ? `<span class="badge badge-success">Shared</span>` : '',
+          file.ownedByMe === false ? `<span class="badge badge-warning">Owned by others</span>` : '',
+          file.mimeType === FOLDER_MIME ? `<span class="badge badge-success">Folder</span>` : '',
+          currentTab === 'temporary' ? `<span class="badge badge-danger">Temp</span>` : ''
+        ].filter(Boolean).join(' ');
+
         tr.innerHTML = `
-          <td class="file-checkbox"><input type="checkbox" ${checked} onchange="toggleSelect('${file.id}', this.checked)"></td>
+          <td class="file-checkbox"><input type="checkbox" data-file-id="${escapeHtml(file.id)}" ${selectedFiles.has(file.id) ? 'checked' : ''}></td>
           <td class="file-icon-col"><span class="file-icon">${getIcon(file.mimeType)}</span></td>
-          <td><div class="file-name" title="${file.name}${trashed}">${file.name}${trashed}</div>${file.count ? `<span class="badge badge-warning">${file.count} copies</span>` : ''}</td>
-          <td class="file-size">${formatBytes(file.size)}</td>
-          <td class="file-date" title="${file.modifiedTime}">${file.modifiedTime ? formatAge(file.modifiedTime) : '-'}</td>
+          <td>
+            <div class="file-name" title="${escapeHtml(file.name || 'Untitled')}">${escapeHtml(file.name || 'Untitled')}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${duplicateBadge}${flags}</div>
+          </td>
+          <td class="file-size">${formatBytes(sizeValue)}</td>
+          <td class="file-date" title="${escapeHtml(file.modifiedTime || '')}">${file.modifiedTime ? formatAge(file.modifiedTime) : '-'}</td>
           <td class="file-actions">
-            <button class="btn btn-sm btn-secondary" onclick="previewFile('${file.id}', '${(file.name||'').replace(/'/g, "\\'")}', '${file.mimeType}', ${file.size}, '${file.modifiedTime||''}')">View</button>
-            ${!file.trashed ? `<button class="btn btn-sm btn-danger" onclick="deleteFile('${file.id}')">Delete</button>` : ''}
+            <button class="btn btn-sm btn-secondary" data-action="view">View</button>
+            <button class="btn btn-sm ${file.trashed ? 'btn-success' : 'btn-danger'}" data-action="mutate">${file.trashed ? 'Restore' : 'Delete'}</button>
           </td>
         `;
+
+        tr.querySelector('[data-file-id]').addEventListener('change', (event) => {
+          toggleSelect(file.id, event.target.checked);
+        });
+        tr.querySelector('[data-action="view"]').addEventListener('click', () => previewById(file.id));
+        tr.querySelector('[data-action="mutate"]').addEventListener('click', () => {
+          if (file.trashed) restoreFiles([file.id]);
+          else deleteFile(file.id);
+        });
+
         tbody.appendChild(tr);
       });
 
+      renderPagination(filteredFiles.length, totalPages);
       updateDeleteBtn();
     }
 
-    function getCategoryFiles(cat) {
-      const data = scanData;
-      switch(cat) {
-        case 'all': return data.files || [];
-        case 'large': return data.large || [];
-        case 'duplicates': return data.duplicates || [];
-        case 'old': return data.old || [];
-        case 'empty': return data.empty || [];
-        case 'trash': return data.trash || [];
-        case 'hidden': return data.hidden || [];
-        default: return [];
-      }
+    function renderPagination(totalCount, totalPages) {
+      const start = totalCount === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+      const end = Math.min(currentPage * PAGE_SIZE, totalCount);
+      document.getElementById('paginationSummary').innerText = totalCount === 0
+        ? 'No files to display'
+        : `Showing ${start}-${end} of ${totalCount.toLocaleString()} files`;
+      document.getElementById('pageLabel').innerText = `Page ${currentPage} / ${Math.max(totalPages, 1)}`;
+      document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+      document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+    }
+
+    function changePage(delta) {
+      const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
+      currentPage = Math.min(Math.max(1, currentPage + delta), totalPages);
+      renderFiles();
     }
 
     function toggleSelect(id, checked) {
@@ -1512,300 +1728,310 @@ const dupes = data.duplicates?.length || 0;
     }
 
     function toggleAll(source) {
-      const checkboxes = document.querySelectorAll('#fileTableBody input[type="checkbox"]');
-      checkboxes.forEach(cb => {
-        cb.checked = source.checked;
-        const id = cb.getAttribute('onchange')?.match(/'([^']+)'/)?.[1];
-        if (id) {
-          if (source.checked) selectedFiles.add(id);
-          else selectedFiles.delete(id);
-        }
+      const checkboxes = document.querySelectorAll('#fileTableBody input[data-file-id]');
+      checkboxes.forEach((checkbox) => {
+        checkbox.checked = source.checked;
+        const id = checkbox.dataset.fileId;
+        if (source.checked) selectedFiles.add(id);
+        else selectedFiles.delete(id);
       });
       updateDeleteBtn();
     }
 
-function selectAllCategory() {
-      const files = getCategoryFiles(currentTab);
-      files.forEach(f => selectedFiles.add(f.id));
+    function selectAllCategory() {
+      getFilteredFiles().forEach((file) => selectedFiles.add(file.id));
       renderFiles();
-      updateDeleteBtn();
     }
 
     function applyBulkSelect(type) {
       if (!type) return;
-      if (type === 'all') {
-        const files = getCategoryFiles(currentTab);
-        files.forEach(f => selectedFiles.add(f.id));
-      } else {
-        const files = getCategoryFiles(type);
-        files.forEach(f => selectedFiles.add(f.id));
-      }
+      const files = type === 'all' ? getFilteredFiles() : getFilteredFiles(type);
+      files.forEach((file) => selectedFiles.add(file.id));
       renderFiles();
-      updateDeleteBtn();
     }
 
     function updateDeleteBtn() {
-      const btn = document.getElementById('deleteBtn');
-      btn.disabled = selectedFiles.size === 0;
-      btn.innerText = `Delete Selected (${selectedFiles.size})`;
+      const button = document.getElementById('deleteBtn');
+      const restoring = currentTab === 'trash';
+      button.disabled = selectedFiles.size === 0;
+      button.innerText = `${restoring ? 'Restore Selected' : 'Delete Selected'} (${selectedFiles.size})`;
     }
 
     function keepNewest() {
-      const files = getCategoryFiles('duplicates');
-      const fileMap = new Map();
-      files.forEach(f => {
-        const existing = fileMap.get(f.name) || [];
-        existing.push(f);
-        fileMap.set(f.name, existing);
-      });
-      const toDelete = [];
-      for (const [, items] of fileMap) {
-        if (items.length > 1) {
-          items.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
-          items.slice(1).forEach(f => toDelete.push(f.id));
-        }
-      }
-      selectedFiles = new Set(toDelete);
-      renderFiles();
-      updateDeleteBtn();
+      selectDuplicateCopies('newest');
     }
 
     function keepOldest() {
-      const files = getCategoryFiles('duplicates');
-      const fileMap = new Map();
-      files.forEach(f => {
-        const existing = fileMap.get(f.name) || [];
-        existing.push(f);
-        fileMap.set(f.name, existing);
-      });
-      const toDelete = [];
-      for (const [, items] of fileMap) {
-        if (items.length > 1) {
-          items.sort((a, b) => new Date(a.modifiedTime) - new Date(b.modifiedTime));
-          items.slice(1).forEach(f => toDelete.push(f.id));
-        }
+      selectDuplicateCopies('oldest');
+    }
+
+    function selectDuplicateCopies(strategy) {
+      if (currentTab !== 'duplicates') {
+        showTab('duplicates');
       }
-      selectedFiles = new Set(toDelete);
+
+      const groups = new Map();
+      getFilteredFiles('duplicates').forEach((file) => {
+        const groupId = file.duplicateGroupId || file.name;
+        const existing = groups.get(groupId) || [];
+        existing.push(file);
+        groups.set(groupId, existing);
+      });
+
+      selectedFiles = new Set();
+      for (const files of groups.values()) {
+        const sorted = [...files].sort((a, b) => {
+          const aTime = new Date(a.modifiedTime || 0).getTime();
+          const bTime = new Date(b.modifiedTime || 0).getTime();
+          return strategy === 'newest' ? bTime - aTime : aTime - bTime;
+        });
+        sorted.slice(1).forEach((file) => selectedFiles.add(file.id));
+      }
       renderFiles();
-      updateDeleteBtn();
     }
 
     function filterFiles() {
+      currentPage = 1;
       renderFiles();
     }
 
     function sortFiles() {
+      currentPage = 1;
       renderFiles();
     }
 
-    async function deleteSelected() {
-      if (selectedFiles.size === 0) return;
-      
-      const modal = document.getElementById('deleteModal');
-      modal.classList.add('active');
-      
-      const fileIds = [...selectedFiles];
-      let processed = 0;
-      let success = 0;
-      let failed = 0;
-      const batchSize = 50;
-      
-      for (let i = 0; i < fileIds.length; i += batchSize) {
-        const batch = fileIds.slice(i, i + batchSize);
-        
-        try {
-          const res = await authFetch('/api/files/delete', {
-            method: 'POST',
-            body: JSON.stringify({ fileIds: batch })
-          });
-          const data = await res.json();
-          success += batch.length;
-        } catch (e) {
-          failed += batch.length;
-        }
-        
-        processed += batch.length;
-        const percent = (processed / fileIds.length) * 100;
-        
-        document.getElementById('deleteProgressFill').style.width = `${percent}%`;
-        document.getElementById('deleteProcessed').innerText = processed;
-        document.getElementById('deleteSuccess').innerText = success;
-        document.getElementById('deleteFailed').innerText = failed;
-        document.getElementById('deleteModalText').innerText = `Deleting ${processed} of ${fileIds.length} files...`;
-        
-        await new Promise(r => setTimeout(r, 500));
-      }
-      
-      document.getElementById('deleteModalClose').classList.remove('hidden');
-      document.getElementById('deleteModalText').innerText = `Complete! Deleted ${success} files.${failed > 0 ? ` ${failed} failed.` : ''}`;
-      
-      recentlyDeleted = [...fileIds];
-      
-      const undoBtn = document.createElement('button');
-      undoBtn.className = 'btn btn-secondary';
-      undoBtn.style.marginTop = '15px';
-      undoBtn.innerText = 'Undo (Restore)';
-      undoBtn.onclick = () => restoreFiles(recentlyDeleted);
-      document.querySelector('#deleteModal .modal').appendChild(undoBtn);
-      selectedFiles.clear();
-      setTimeout(() => {
-        startScan();
-      }, 2000);
-    }
-
-    function closeDeleteModal() {
-      document.getElementById('deleteModal').classList.remove('active');
-      closeDeleteModalRest();
-    }
-
-    function closeDeleteModalRest() {
-      document.getElementById('deleteModal').classList.remove('active');
+    function openDeleteModal(title, text) {
+      document.getElementById('deleteModalTitle').innerText = title;
+      document.getElementById('deleteModalText').innerText = text;
+      document.getElementById('deleteModal').classList.add('active');
+      document.getElementById('deleteModalClose').classList.add('hidden');
       document.getElementById('deleteProgressFill').style.width = '0%';
       document.getElementById('deleteProcessed').innerText = '0';
       document.getElementById('deleteSuccess').innerText = '0';
       document.getElementById('deleteFailed').innerText = '0';
-      
-      const undoBtns = document.querySelectorAll('#deleteModal .modal button');
-      undoBtns.forEach(b => { if (b.innerText.includes('Undo')) b.remove(); });
+      document.querySelectorAll('#deleteModal .modal button[data-undo="true"]').forEach((button) => button.remove());
+    }
+
+    async function runBatchMutation(endpoint, fileIds, meta) {
+      openDeleteModal(meta.title, `${meta.verb} ${fileIds.length} files...`);
+
+      let processed = 0;
+      let success = 0;
+      let failed = 0;
+      const successIds = [];
+      const batchSize = 50;
+
+      for (let index = 0; index < fileIds.length; index += batchSize) {
+        const batch = fileIds.slice(index, index + batchSize);
+
+        try {
+          const response = await authFetch(endpoint, {
+            method: 'POST',
+            body: JSON.stringify({ fileIds: batch })
+          });
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.error || 'Request failed');
+          }
+
+          success += data.successCount || 0;
+          failed += data.failureCount || 0;
+          (data.successIds || []).forEach((id) => successIds.push(id));
+        } catch (error) {
+          failed += batch.length;
+        }
+
+        processed += batch.length;
+        const percent = (processed / fileIds.length) * 100;
+        document.getElementById('deleteProgressFill').style.width = `${percent}%`;
+        document.getElementById('deleteProcessed').innerText = processed.toLocaleString();
+        document.getElementById('deleteSuccess').innerText = success.toLocaleString();
+        document.getElementById('deleteFailed').innerText = failed.toLocaleString();
+        document.getElementById('deleteModalText').innerText = `${meta.verb} ${processed} of ${fileIds.length} files...`;
+      }
+
+      document.getElementById('deleteModalClose').classList.remove('hidden');
+      document.getElementById('deleteModalText').innerText = `${meta.complete} ${success} files.${failed ? ` ${failed} failed.` : ''}`;
+
+      if (meta.allowUndo && successIds.length > 0) {
+        recentlyDeleted = [...successIds];
+        const undoButton = document.createElement('button');
+        undoButton.className = 'btn btn-secondary';
+        undoButton.setAttribute('data-undo', 'true');
+        undoButton.style.marginTop = '15px';
+        undoButton.innerText = 'Undo (Restore)';
+        undoButton.onclick = () => restoreFiles(recentlyDeleted);
+        document.querySelector('#deleteModal .modal').appendChild(undoButton);
+      }
+
+      selectedFiles.clear();
+      renderFiles();
+
+      if (successIds.length > 0 || endpoint === '/api/trash/empty') {
+        setTimeout(() => startScan('drive'), 1200);
+      }
+
+      return { successIds, success, failed };
+    }
+
+    async function deleteSelected() {
+      const fileIds = [...selectedFiles];
+      if (fileIds.length === 0) return;
+
+      const restoring = currentTab === 'trash';
+      if (restoring) {
+        await restoreFiles(fileIds);
+        return;
+      }
+
+      await runBatchMutation('/api/files/delete', fileIds, {
+        title: '🗑️ Deleting Files',
+        verb: 'Deleting',
+        complete: 'Moved to trash:',
+        allowUndo: true
+      });
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').classList.remove('active');
+      document.querySelectorAll('#deleteModal .modal button[data-undo="true"]').forEach((button) => button.remove());
     }
 
     async function restoreFiles(fileIds) {
       if (!fileIds?.length) return;
-      try {
-        const res = await authFetch('/api/files/restore', {
-          method: 'POST',
-          body: JSON.stringify({ fileIds })
-        });
-        const data = await res.json();
-        alert(data.message || 'Restored');
-        closeDeleteModal();
-      } catch (e) {
-        alert('Error: ' + e.message);
-      }
+      await runBatchMutation('/api/files/restore', fileIds, {
+        title: '♻️ Restoring Files',
+        verb: 'Restoring',
+        complete: 'Restored:',
+        allowUndo: false
+      });
     }
 
     async function deleteFile(id) {
-      selectedFiles.clear();
-      selectedFiles.add(id);
+      selectedFiles = new Set([id]);
+      renderFiles();
       await deleteSelected();
     }
 
     async function emptyTrash() {
       if (!confirm('Empty trash permanently? This cannot be undone.')) return;
-      
-      const modal = document.getElementById('deleteModal');
-      modal.classList.add('active');
-      document.getElementById('deleteModalText').innerText = 'Emptying trash...';
-      
+
+      openDeleteModal('🧨 Emptying Trash', 'Emptying trash...');
+
       try {
-        const res = await authFetch('/api/trash/empty', { method: 'POST' });
-        const data = await res.json();
-        document.getElementById('deleteModalText').innerText = data.message || 'Trash emptied';
+        const response = await authFetch('/api/trash/empty', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Unable to empty trash');
+        }
+
         document.getElementById('deleteProgressFill').style.width = '100%';
-        document.getElementById('deleteSuccess').innerText = 'Done';
-        setTimeout(() => {
-          closeDeleteModal();
-          startScan();
-        }, 2000);
-      } catch (e) {
-        document.getElementById('deleteModalText').innerText = 'Error: ' + e.message;
+        document.getElementById('deleteProcessed').innerText = data.deletedCount?.toLocaleString() || '0';
+        document.getElementById('deleteSuccess').innerText = data.deletedCount?.toLocaleString() || '0';
+        document.getElementById('deleteFailed').innerText = '0';
+        document.getElementById('deleteModalText').innerText = data.message || 'Trash emptied';
+        document.getElementById('deleteModalClose').classList.remove('hidden');
+        setTimeout(() => startScan('drive'), 1200);
+      } catch (error) {
+        document.getElementById('deleteModalText').innerText = `Error: ${error.message}`;
+        document.getElementById('deleteModalClose').classList.remove('hidden');
       }
     }
 
     function exportData(format) {
-      const files = getCategoryFiles(currentTab);
-      let content, mime, ext;
-      
+      const files = getFilteredFiles();
+      let content;
+      let mime;
+      let ext;
+
       if (format === 'json') {
         content = JSON.stringify(files, null, 2);
         mime = 'application/json';
         ext = 'json';
       } else if (format === 'print') {
         content = `<html><head><title>DriveClean Report</title>
-<style>body{font-family:sans-serif;padding:20px}
-h1{color:#9d4edd}.file{margin:8px 0;padding:8px;border-bottom:1px solid #eee}
-.name{font-weight:600}.meta{color:#666;font-size:12px}</style></head>
-<body><h1>DriveClean Report - ${currentTab}</h1>
+<style>body{font-family:sans-serif;padding:20px}h1{color:#9d4edd}.file{margin:8px 0;padding:8px;border-bottom:1px solid #eee}.name{font-weight:600}.meta{color:#666;font-size:12px}</style></head>
+<body><h1>DriveClean Report - ${escapeHtml(currentTab)}</h1>
 <p>Generated: ${new Date().toLocaleString()}</p>
 <p>Total: ${files.length} files</p>
-${files.map(f => `<div class="file"><div class="name">${f.name}</div><div class="meta">${f.size} - ${f.modifiedTime}</div></div>`).join('')}
+${files.map((file) => `<div class="file"><div class="name">${escapeHtml(file.name || 'Untitled')}</div><div class="meta">${formatBytes(file.totalSize || file.size || 0)} - ${escapeHtml(file.modifiedTime || '')}</div></div>`).join('')}
 </body></html>`;
-        mime = 'text/html';
-        ext = 'html';
         const win = window.open('', '_blank');
-        win.document.write(content);
-        win.document.close();
-        win.print();
+        if (win) {
+          win.document.write(content);
+          win.document.close();
+          win.print();
+        }
         return;
       } else {
-        content = 'Name,Size,Modified,MIME Type\n';
-        files.forEach(f => {
-          content += `"${f.name}","${f.size}","${f.modifiedTime}","${f.mimeType}"\n`;
+        content = 'Name,Size,Modified,MIME Type,Link\n';
+        files.forEach((file) => {
+          const row = [
+            csvEscape(file.name || 'Untitled'),
+            csvEscape(String(file.totalSize || file.size || 0)),
+            csvEscape(file.modifiedTime || ''),
+            csvEscape(file.mimeType || ''),
+            csvEscape(file.webViewLink || buildDriveLink(file))
+          ];
+          content += `${row.join(',')}\n`;
         });
         mime = 'text/csv';
         ext = 'csv';
       }
-      
+
       const blob = new Blob([content], { type: mime });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${currentTab}_files.${ext}`;
-      a.click();
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${currentTab}_files.${ext}`;
+      link.click();
+      URL.revokeObjectURL(url);
     }
 
-    function exportCSV() { exportData('csv'); }
+    function exportCSV() {
+      exportData('csv');
+    }
 
-    function previewFile(id, name, mime, size, modified) {
+    function previewById(id) {
+      const file = fileLookup.get(id);
+      if (file) previewFile(file);
+    }
+
+    function previewFile(file) {
       const modal = document.getElementById('previewModal');
-      document.getElementById('previewTitle').innerText = name || 'File Preview';
-      
-      const isImage = mime?.includes('image');
-      const isVideo = mime?.includes('video');
-      const isPdf = mime?.includes('pdf');
-      
-      let content = '';
-      if (isImage) {
-        content = `<div style="text-align:center;padding:20px;background:var(--bg-elevated);border-radius:8px">
-          <span style="font-size:4rem">🖼️</span>
-          <p style="color:var(--text-dim);margin-top:10px">Image preview requires direct link</p>
-        </div>`;
-      } else if (isVideo) {
-        content = `<div style="text-align:center;padding:20px;background:var(--bg-elevated);border-radius:8px">
-          <span style="font-size:4rem">🎬</span>
-          <p style="color:var(--text-dim);margin-top:10px">Video preview requires direct link</p>
-        </div>`;
-      } else if (isPdf) {
-        content = `<div style="text-align:center;padding:20px;background:var(--bg-elevated);border-radius:8px">
-          <span style="font-size:4rem">📕</span>
-          <p style="color:var(--text-dim);margin-top:10px">PDF preview requires direct link</p>
-        </div>`;
-      } else {
-        content = `<div style="text-align:center;padding:20px;background:var(--bg-elevated);border-radius:8px">
-          <span style="font-size:4rem">${getIcon(mime)}</span>
-        </div>`;
-      }
-      
-      content += `
+      document.getElementById('previewTitle').innerText = file.name || 'File Preview';
+
+      const mime = file.mimeType || '';
+      let heroIcon = getIcon(mime);
+      if (mime === FOLDER_MIME) heroIcon = '🗂️';
+
+      let content = `
+        <div style="text-align:center;padding:20px;background:var(--bg-elevated);border-radius:8px">
+          <span style="font-size:4rem">${heroIcon}</span>
+        </div>
         <div style="margin-top:20px">
           <div style="display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid var(--border)">
             <span style="color:var(--text-dim)">Size</span>
-            <span style="color:var(--secondary)">${formatBytes(size)}</span>
+            <span style="color:var(--secondary)">${formatBytes(file.totalSize || file.size || 0)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid var(--border)">
             <span style="color:var(--text-dim)">Type</span>
-            <span style="color:var(--cyan)">${mime || 'Unknown'}</span>
+            <span style="color:var(--cyan)">${escapeHtml(mime || 'Unknown')}</span>
           </div>
           <div style="display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid var(--border)">
             <span style="color:var(--text-dim)">Modified</span>
-            <span>${modified ? new Date(modified).toLocaleString() : 'Unknown'}</span>
+            <span>${file.modifiedTime ? new Date(file.modifiedTime).toLocaleString() : 'Unknown'}</span>
           </div>
         </div>
       `;
-      
+
+      if (file.duplicateCount) {
+        content += `<p style="margin-top:16px;color:var(--warning)">Duplicate group: ${file.duplicateCount} matching files</p>`;
+      }
+
       document.getElementById('previewContent').innerHTML = content;
-      document.getElementById('previewLink').href = `https://drive.google.com/file/d/${id}/view`;
-      
+      document.getElementById('previewLink').href = file.webViewLink || buildDriveLink(file);
       modal.classList.add('active');
     }
 
@@ -1826,12 +2052,11 @@ ${files.map(f => `<div class="file"><div class="name">${f.name}</div><div class=
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
         oscillator.start(audioCtx.currentTime);
         oscillator.stop(audioCtx.currentTime + 0.3);
-      } catch (e) {}
+      } catch {}
     }
 
     function toggleTheme() {
-      const current = document.body.getAttribute('data-theme');
-      const newTheme = current === 'light' ? 'dark' : 'light';
+      const newTheme = document.body.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
       applyTheme(newTheme);
       localStorage.setItem('theme', newTheme);
     }
@@ -1847,29 +2072,51 @@ ${files.map(f => `<div class="file"><div class="name">${f.name}</div><div class=
     }
 
     async function authFetch(url, options = {}) {
-      return fetch(url, {
-        ...options,
-        headers: {
-          ...options.headers,
-          'Content-Type': 'application/json',
-          'x-session': currentSession
-        }
-      });
+      const headers = {
+        ...options.headers,
+        'x-session': currentSession
+      };
+
+      if (options.body && !headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+
+      return fetch(url, { ...options, headers });
+    }
+
+    function buildDriveLink(file) {
+      if (file.mimeType === FOLDER_MIME) {
+        return `https://drive.google.com/drive/folders/${file.id}`;
+      }
+      return `https://drive.google.com/file/d/${file.id}/view`;
+    }
+
+    function csvEscape(value) {
+      return `"${String(value ?? '').replace(/"/g, '""')}"`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     function formatBytes(bytes) {
-      if (!bytes || bytes === 0) return '0 B';
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+      const value = Number(bytes || 0);
+      if (!Number.isFinite(value) || value <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+      return `${parseFloat((value / Math.pow(1024, index)).toFixed(1))} ${units[index]}`;
     }
 
     function formatAge(dateStr) {
       if (!dateStr) return 'Unknown';
       const diff = Date.now() - new Date(dateStr).getTime();
       const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      if (days === 0) return 'Today';
+      if (days <= 0) return 'Today';
       if (days === 1) return 'Yesterday';
       if (days < 7) return `${days} days ago`;
       if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
@@ -1879,6 +2126,7 @@ ${files.map(f => `<div class="file"><div class="name">${f.name}</div><div class=
 
     function getIcon(mime) {
       if (!mime) return '📄';
+      if (mime === FOLDER_MIME || mime.includes('folder')) return '📁';
       if (mime.includes('image')) return '🖼️';
       if (mime.includes('video')) return '🎬';
       if (mime.includes('audio')) return '🎵';
@@ -1886,7 +2134,6 @@ ${files.map(f => `<div class="file"><div class="name">${f.name}</div><div class=
       if (mime.includes('spreadsheet') || mime.includes('excel')) return '📊';
       if (mime.includes('document') || mime.includes('word')) return '📝';
       if (mime.includes('zip') || mime.includes('rar') || mime.includes('archive')) return '🗜️';
-      if (mime.includes('folder')) return '📁';
       return '📄';
     }
 
