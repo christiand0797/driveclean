@@ -26,6 +26,7 @@ The ultimate Google Drive, Photos & Gmail cleanup tool with AI-powered analysis.
 - Folder size analysis
 - Oldest/newest file tracking
 - Gmail promotions & social count
+- Scan history (last 10 scans)
 
 ### Actions
 - One-click delete
@@ -33,14 +34,20 @@ The ultimate Google Drive, Photos & Gmail cleanup tool with AI-powered analysis.
 - Empty trash
 - Gmail bulk cleanup
 - Keep newest/oldest quick actions
-- Export to CSV
+- Export to CSV & JSON
 - Size filters
+- File preview modal
 
 ### UI/UX
 - Cyberpunk dark theme
+- Light mode toggle
 - Real-time progress
 - Storage overview with warnings
+- Sound notifications
 - Keyboard shortcuts
+- PWA installable
+- Mobile optimized
+- Human-readable dates ("2 weeks ago")
 
 ## Quick Start
 
@@ -85,6 +92,10 @@ Open http://localhost:3000
 4. Add redirect URIs:
    - http://localhost:3000/api/auth/callback
    - https://your-app.onrender.com/api/auth/callback
+5. Enable APIs:
+   - Google Drive API
+   - Gmail API
+   - Photos Library API
 
 ## Tech Stack
 
@@ -92,7 +103,8 @@ Open http://localhost:3000
 - WebSocket for real-time updates
 - Google APIs (Drive, Photos, Gmail)
 - OAuth 2.0 with AES-256 encryption
-- Parallel API requests
+- Parallel API requests (5x faster)
+- PWA with service worker
 
 ## License
 
