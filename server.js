@@ -279,6 +279,140 @@ function buildExtension(name) {
   return name.split('.').pop().toLowerCase();
 }
 
+function parseDriveFolderId(input) {
+  if (!input) {
+    return null;
+  }
+
+  const trimmed = String(input).trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch) {
+    return folderMatch[1];
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const queryId = parsed.searchParams.get('id');
+    if (queryId) {
+      return queryId;
+    }
+
+    const pathMatch = parsed.pathname.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    if (pathMatch) {
+      return pathMatch[1];
+    }
+  } catch {
+    // Not a URL, treat the raw input as a folder ID.
+  }
+
+  return trimmed.replace(/^.*folders\//, '').split(/[?&#/]/)[0];
+}
+
+async function resolveDriveScanScope(drive, scopeInput) {
+  const folderId = parseDriveFolderId(scopeInput);
+  if (!folderId) {
+    return { mode: 'drive' };
+  }
+
+  let response;
+  try {
+    response = await retryRequest(() =>
+      drive.files.get({
+        fileId: folderId,
+        supportsAllDrives: true,
+        fields:
+          'id,name,mimeType,modifiedTime,parents,permissions(type,role,emailAddress,domain),webViewLink,ownedByMe,shared'
+      })
+    );
+  } catch (error) {
+    const wrapped = new Error('Folder not found or access denied.');
+    wrapped.statusCode = error.code || error.statusCode || 404;
+    throw wrapped;
+  }
+
+  const folder = normalizeDriveFile(response.data);
+  if (!isFolder(folder)) {
+    const error = new Error('Scan scope must be a Google Drive folder.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return { mode: 'folder', folder };
+}
+
+function mergeLatestScan(sessionId, patch) {
+  const merged = { ...(latestScans.get(sessionId) || {}), ...patch };
+  latestScans.set(sessionId, merged);
+  return merged;
+}
+
+async function countGmailMessages(gmail, query, onProgress) {
+  let total = 0;
+  let pageToken = null;
+
+  do {
+    const response = await retryRequest(() =>
+      gmail.users.messages.list({
+        userId: 'me',
+        q: query,
+        maxResults: 500,
+        pageToken: pageToken || undefined
+      })
+    );
+
+    const messages = response.data.messages || [];
+    total += messages.length;
+    pageToken = response.data.nextPageToken || null;
+
+    if (typeof onProgress === 'function') {
+      await onProgress(total);
+    }
+  } while (pageToken);
+
+  return total;
+}
+
+async function deleteGmailMessages(gmail, query, onProgress) {
+  let deletedCount = 0;
+
+  while (true) {
+    const response = await retryRequest(() =>
+      gmail.users.messages.list({
+        userId: 'me',
+        q: query,
+        maxResults: 500
+      })
+    );
+
+    const messages = response.data.messages || [];
+    if (messages.length === 0) {
+      break;
+    }
+
+    await retryRequest(() =>
+      gmail.users.messages.batchDelete({
+        userId: 'me',
+        requestBody: { ids: messages.map((message) => message.id) }
+      })
+    );
+
+    deletedCount += messages.length;
+    if (typeof onProgress === 'function') {
+      await onProgress(deletedCount);
+    }
+
+    if (!response.data.nextPageToken && messages.length < 500) {
+      break;
+    }
+  }
+
+  return deletedCount;
+}
+
 function updateJob(jobId, ws, patch) {
   const job = scanJobs.get(jobId);
   if (!job) {
@@ -602,6 +736,10 @@ app.post('/api/trash/empty', validateSession, async (req, res) => {
       pageToken = response.data.nextPageToken;
     } while (pageToken);
 
+    if (latestScans.has(sessionId)) {
+      mergeLatestScan(sessionId, { trash: [] });
+    }
+
     res.json({ message: `Permanently deleted ${deletedCount} items.`, deletedCount });
   } catch (error) {
     respondWithError(res, error);
@@ -630,23 +768,22 @@ app.post('/api/gmail/clean', validateSession, async (req, res) => {
 
     const before = gmailBeforeDate(Number(olderThanDays) || 365);
     const query = `category:${category} before:${before}`;
-    const listRes = await retryRequest(() =>
-      gmail.users.messages.list({ userId: 'me', q: query, maxResults: 500 })
-    );
-
-    const messages = listRes.data.messages || [];
-    if (messages.length === 0) {
+    const deletedCount = await deleteGmailMessages(gmail, query);
+    if (deletedCount === 0) {
       return res.json({ message: 'No emails found.', deletedCount: 0 });
     }
 
-    await retryRequest(() =>
-      gmail.users.messages.batchDelete({
-        userId: 'me',
-        requestBody: { ids: messages.map((message) => message.id) }
-      })
-    );
+    const gmailState = latestScans.get(sessionId)?.gmail || {};
+    mergeLatestScan(sessionId, {
+      gmail: {
+        ...gmailState,
+        [category]: Math.max(0, Number(gmailState[category] || 0) - deletedCount)
+      },
+      gmailCapturedAt: new Date().toISOString(),
+      gmailOlderThanDays: Number(olderThanDays) || 365
+    });
 
-    res.json({ message: `Deleted ${messages.length} emails.`, deletedCount: messages.length });
+    res.json({ message: `Deleted ${deletedCount} emails.`, deletedCount });
   } catch (error) {
     respondWithError(res, error);
   }
@@ -659,14 +796,26 @@ wss.on('connection', (ws) => {
 
       if (data.type === 'startScan') {
         const jobId = uuidv4();
-        scanJobs.set(jobId, { session: data.session, cancel: false, progress: 0, stage: 'Queued' });
+        scanJobs.set(jobId, {
+          session: data.session,
+          scope: data.scope || null,
+          cancel: false,
+          progress: 0,
+          stage: 'Queued'
+        });
         ws.send(JSON.stringify({ type: 'jobStarted', jobId }));
         await runDriveScan(jobId, ws);
       }
 
       if (data.type === 'startGmailScan') {
         const jobId = uuidv4();
-        scanJobs.set(jobId, { session: data.session, cancel: false, progress: 0, stage: 'Queued' });
+        scanJobs.set(jobId, {
+          session: data.session,
+          olderThanDays: Number(data.olderThanDays) || 365,
+          cancel: false,
+          progress: 0,
+          stage: 'Queued'
+        });
         ws.send(JSON.stringify({ type: 'jobStarted', jobId }));
         await runGmailScan(jobId, ws);
       }
@@ -737,7 +886,10 @@ async function runPhotosScan(jobId, ws) {
     updateJob(jobId, ws, {
       stage: 'Complete',
       progress: 100,
-      data: { photos: { total: totalItems, videos: videoCount } }
+      data: mergeLatestScan(job.session, {
+        photos: { total: totalItems, videos: videoCount },
+        photosCapturedAt: new Date().toISOString()
+      })
     });
     finishJob(jobId);
     log(`Photos Scan Complete for job ${jobId}`);
@@ -755,27 +907,46 @@ async function runGmailScan(jobId, ws) {
   try {
     const oauth = await getAuthClient(job.session);
     const gmail = google.gmail({ version: 'v1', auth: oauth });
-    const before = gmailBeforeDate(365);
+    const olderThanDays = Number(job.olderThanDays) || 365;
+    const before = gmailBeforeDate(olderThanDays);
 
     updateJob(jobId, ws, { stage: 'Scanning Promotions', progress: 10 });
-    const promotions = await retryRequest(() =>
-      gmail.users.messages.list({ userId: 'me', q: `category:promotions before:${before}`, maxResults: 5000 })
+    const promotionsCount = await countGmailMessages(
+      gmail,
+      `category:promotions before:${before}`,
+      async (count) => {
+        updateJob(jobId, ws, {
+          stage: `Scanning Promotions (${count.toLocaleString()})`,
+          progress: Math.min(45, 10 + count / 200)
+        });
+      }
     );
 
     updateJob(jobId, ws, { stage: 'Scanning Social', progress: 60 });
-    const social = await retryRequest(() =>
-      gmail.users.messages.list({ userId: 'me', q: `category:social before:${before}`, maxResults: 5000 })
+    const socialCount = await countGmailMessages(
+      gmail,
+      `category:social before:${before}`,
+      async (count) => {
+        updateJob(jobId, ws, {
+          stage: `Scanning Social (${count.toLocaleString()})`,
+          progress: Math.min(92, 60 + count / 200)
+        });
+      }
     );
+
+    const scanData = mergeLatestScan(job.session, {
+      gmail: {
+        promotions: promotionsCount,
+        social: socialCount
+      },
+      gmailCapturedAt: new Date().toISOString(),
+      gmailOlderThanDays: olderThanDays
+    });
 
     updateJob(jobId, ws, {
       stage: 'Complete',
       progress: 100,
-      data: {
-        gmail: {
-          promotions: promotions.data.messages?.length || 0,
-          social: social.data.messages?.length || 0
-        }
-      }
+      data: scanData
     });
     finishJob(jobId);
     log(`Gmail Scan Complete for job ${jobId}`);
@@ -794,6 +965,11 @@ async function runDriveScan(jobId, ws) {
     log(`Starting Drive Scan for job ${jobId}`);
     const oauth = await getAuthClient(job.session);
     const drive = google.drive({ version: 'v3', auth: oauth });
+    const scope = await resolveDriveScanScope(drive, job.scope);
+    const driveFields =
+      'nextPageToken,files(id,name,mimeType,size,quotaBytesUsed,modifiedTime,md5Checksum,parents,permissions(type,role,emailAddress,domain),webViewLink,ownedByMe,shared)';
+    const trashFields =
+      'nextPageToken,files(id,name,mimeType,size,quotaBytesUsed,modifiedTime,parents,permissions(type,role,emailAddress,domain),webViewLink,ownedByMe,shared)';
 
     const activeFiles = [];
     const trashFiles = [];
@@ -818,107 +994,169 @@ async function runDriveScan(jobId, ws) {
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-    let pageToken = null;
     let totalFiles = 0;
     let totalSize = 0;
 
-    updateJob(jobId, ws, { stage: 'Scanning Drive', progress: 2 });
+    const processFile = (file) => {
+      activeFiles.push(file);
+      totalFiles += 1;
+      totalSize += file.size;
 
-    do {
-      const currentJob = scanJobs.get(jobId);
-      if (!currentJob || currentJob.cancel) {
-        return;
+      const extension = buildExtension(file.name);
+      const mimeCategory = (file.mimeType || 'other').split('/')[0];
+      extMap.set(extension, (extMap.get(extension) || 0) + 1);
+      mimeMap.set(mimeCategory, (mimeMap.get(mimeCategory) || 0) + 1);
+
+      const hasParents = file.parents.length > 0;
+      if (!hasParents) {
+        categorySets.orphan.push(file);
+        categorySets.hidden.push(file);
+      } else {
+        for (const parentId of file.parents) {
+          childCountMap.set(parentId, (childCountMap.get(parentId) || 0) + 1);
+        }
       }
 
-      const response = await retryRequest(() =>
-        drive.files.list({
-          ...getDriveListBaseOptions(pageToken),
-          q: 'trashed=false',
-          fields: 'nextPageToken,files(id,name,mimeType,size,quotaBytesUsed,modifiedTime,md5Checksum,parents,permissions(type,role,emailAddress,domain),webViewLink,ownedByMe,shared)'
-        })
-      );
-
-      const files = response.data.files || [];
-      if (files.length === 0) {
-        break;
+      if (file.name.startsWith('.') && hasParents) {
+        categorySets.hidden.push(file);
       }
 
-      for (const rawFile of files) {
-        if (activeFiles.length >= SCAN_LIMIT) {
+      if (file.size >= 100 * 1024 * 1024) {
+        categorySets.large.push(file);
+      }
+
+      if (!isFolder(file) && file.size === 0) {
+        categorySets.empty.push(file);
+      }
+
+      if (file.modifiedTime && new Date(file.modifiedTime) < oneYearAgo) {
+        categorySets.old.push(file);
+      }
+
+      if (file.shared) {
+        categorySets.shared.push(file);
+      }
+
+      if (!file.ownedByMe) {
+        categorySets.ownedByOthers.push(file);
+      }
+
+      if (file.public) {
+        categorySets.public.push(file);
+      }
+
+      if (isTemporaryFile(file)) {
+        categorySets.temporary.push(file);
+      }
+
+      if (isFolder(file)) {
+        folders.set(file.id, { ...file, totalSize: 0, childCount: 0 });
+      } else {
+        const duplicateKey = buildDuplicateKey(file);
+        if (duplicateKey) {
+          const bucket = duplicateBuckets.get(duplicateKey) || [];
+          bucket.push(file);
+          duplicateBuckets.set(duplicateKey, bucket);
+        }
+      }
+    };
+
+    const updateActiveProgress = () =>
+      updateJob(jobId, ws, {
+        stage:
+          scope.mode === 'folder'
+            ? `Scanned ${totalFiles.toLocaleString()} items in ${scope.folder.name}`
+            : `Scanned ${totalFiles.toLocaleString()} files`,
+        progress: Math.min(70, 5 + (activeFiles.length / SCAN_LIMIT) * 65)
+      });
+
+    if (scope.mode === 'folder') {
+      folders.set(scope.folder.id, { ...scope.folder, totalSize: 0, childCount: 0 });
+      updateJob(jobId, ws, { stage: `Scanning folder ${scope.folder.name}`, progress: 2 });
+
+      const folderQueue = [scope.folder.id];
+      const visitedFolderIds = new Set();
+
+      while (folderQueue.length > 0 && activeFiles.length < SCAN_LIMIT) {
+        const currentJob = scanJobs.get(jobId);
+        if (!currentJob || currentJob.cancel) {
+          return;
+        }
+
+        const currentFolderId = folderQueue.shift();
+        if (!currentFolderId || visitedFolderIds.has(currentFolderId)) {
+          continue;
+        }
+        visitedFolderIds.add(currentFolderId);
+
+        let pageToken = null;
+        do {
+          const runningJob = scanJobs.get(jobId);
+          if (!runningJob || runningJob.cancel) {
+            return;
+          }
+
+          const response = await retryRequest(() =>
+            drive.files.list({
+              ...getDriveListBaseOptions(pageToken),
+              q: `'${currentFolderId}' in parents and trashed=false`,
+              fields: driveFields
+            })
+          );
+
+          const files = response.data.files || [];
+          for (const rawFile of files) {
+            if (activeFiles.length >= SCAN_LIMIT) {
+              break;
+            }
+
+            const file = normalizeDriveFile(rawFile);
+            processFile(file);
+
+            if (isFolder(file) && !visitedFolderIds.has(file.id)) {
+              folderQueue.push(file.id);
+            }
+          }
+
+          pageToken = response.data.nextPageToken;
+          updateActiveProgress();
+        } while (pageToken && activeFiles.length < SCAN_LIMIT);
+      }
+    } else {
+      let pageToken = null;
+      updateJob(jobId, ws, { stage: 'Scanning Drive', progress: 2 });
+
+      do {
+        const currentJob = scanJobs.get(jobId);
+        if (!currentJob || currentJob.cancel) {
+          return;
+        }
+
+        const response = await retryRequest(() =>
+          drive.files.list({
+            ...getDriveListBaseOptions(pageToken),
+            q: 'trashed=false',
+            fields: driveFields
+          })
+        );
+
+        const files = response.data.files || [];
+        if (files.length === 0) {
           break;
         }
 
-        const file = normalizeDriveFile(rawFile);
-        activeFiles.push(file);
-        totalFiles += 1;
-        totalSize += file.size;
-
-        const extension = buildExtension(file.name);
-        const mimeCategory = (file.mimeType || 'other').split('/')[0];
-        extMap.set(extension, (extMap.get(extension) || 0) + 1);
-        mimeMap.set(mimeCategory, (mimeMap.get(mimeCategory) || 0) + 1);
-
-        const hasParents = file.parents.length > 0;
-        if (!hasParents) {
-          categorySets.orphan.push(file);
-          categorySets.hidden.push(file);
-        } else {
-          for (const parentId of file.parents) {
-            childCountMap.set(parentId, (childCountMap.get(parentId) || 0) + 1);
+        for (const rawFile of files) {
+          if (activeFiles.length >= SCAN_LIMIT) {
+            break;
           }
+
+          processFile(normalizeDriveFile(rawFile));
         }
 
-        if (file.name.startsWith('.') && hasParents) {
-          categorySets.hidden.push(file);
-        }
-
-        if (file.size >= 100 * 1024 * 1024) {
-          categorySets.large.push(file);
-        }
-
-        if (!isFolder(file) && file.size === 0) {
-          categorySets.empty.push(file);
-        }
-
-        if (file.modifiedTime && new Date(file.modifiedTime) < oneYearAgo) {
-          categorySets.old.push(file);
-        }
-
-        if (file.shared) {
-          categorySets.shared.push(file);
-        }
-
-        if (!file.ownedByMe) {
-          categorySets.ownedByOthers.push(file);
-        }
-
-        if (file.public) {
-          categorySets.public.push(file);
-        }
-
-        if (isTemporaryFile(file)) {
-          categorySets.temporary.push(file);
-        }
-
-        if (isFolder(file)) {
-          folders.set(file.id, { ...file, totalSize: 0, childCount: 0 });
-        } else {
-          const duplicateKey = buildDuplicateKey(file);
-          if (duplicateKey) {
-            const bucket = duplicateBuckets.get(duplicateKey) || [];
-            bucket.push(file);
-            duplicateBuckets.set(duplicateKey, bucket);
-          }
-        }
-      }
-
-      pageToken = response.data.nextPageToken;
-
-      updateJob(jobId, ws, {
-        stage: `Scanned ${totalFiles.toLocaleString()} files`,
-        progress: Math.min(70, 5 + (activeFiles.length / SCAN_LIMIT) * 65)
-      });
-    } while (pageToken && activeFiles.length < SCAN_LIMIT);
+        pageToken = response.data.nextPageToken;
+        updateActiveProgress();
+      } while (pageToken && activeFiles.length < SCAN_LIMIT);
+    }
 
     updateJob(jobId, ws, { stage: 'Computing folder sizes', progress: 72 });
 
@@ -1005,7 +1243,10 @@ async function runDriveScan(jobId, ws) {
     duplicateGroups.sort((a, b) => b.wastedBytes - a.wastedBytes);
     duplicateFiles.sort((a, b) => b.wastedBytes - a.wastedBytes || Number(b.size || 0) - Number(a.size || 0));
 
-    updateJob(jobId, ws, { stage: 'Scanning Trash', progress: 90 });
+    updateJob(jobId, ws, {
+      stage: scope.mode === 'folder' ? 'Scanning account trash' : 'Scanning Trash',
+      progress: 90
+    });
 
     let trashPageToken = null;
     do {
@@ -1018,7 +1259,7 @@ async function runDriveScan(jobId, ws) {
         drive.files.list({
           ...getDriveListBaseOptions(trashPageToken),
           q: 'trashed=true',
-          fields: 'nextPageToken,files(id,name,mimeType,size,quotaBytesUsed,modifiedTime,webViewLink)'
+          fields: trashFields
         })
       );
 
@@ -1051,6 +1292,16 @@ async function runDriveScan(jobId, ws) {
 
     const scanData = {
       capturedAt: new Date().toISOString(),
+      scope:
+        scope.mode === 'folder'
+          ? {
+              mode: 'folder',
+              folderId: scope.folder.id,
+              folderName: scope.folder.name,
+              webViewLink: scope.folder.webViewLink,
+              trashScope: 'global'
+            }
+          : { mode: 'drive' },
       total: totalFiles,
       totalSize,
       files: activeFiles,
@@ -1072,14 +1323,18 @@ async function runDriveScan(jobId, ws) {
       folderSizes
     };
 
-    latestScans.set(job.session, scanData);
+    const mergedScanData = mergeLatestScan(job.session, scanData);
     updateJob(jobId, ws, {
       stage: 'Complete',
       progress: 100,
-      data: scanData
+      data: mergedScanData
     });
     finishJob(jobId);
-    log(`Drive Scan Complete for job ${jobId}: ${totalFiles} files`);
+    log(
+      `Drive Scan Complete for job ${jobId}: ${totalFiles} items${
+        scope.mode === 'folder' ? ` in folder ${scope.folder.id}` : ''
+      }`
+    );
   } catch (error) {
     failJob(jobId, ws, error.message, error.statusCode);
   }

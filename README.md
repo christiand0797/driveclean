@@ -7,8 +7,9 @@ Open source Google Drive cleanup app built for fast, safe storage cleanup.
 - Scans Google Drive storage and shows total usage, file type mix, and largest folders
 - Finds duplicate files using MD5 checksums when available, with name/size fallback for files without checksums
 - Surfaces large files, old files, empty files, empty folders, temporary files, hidden files, orphaned files, public files, shared files, and files owned by others
-- Lets you preview items, bulk move them to trash, restore trashed files, and permanently empty trash
-- Scans Gmail promotions/social counts and Google Photos totals for a fuller storage summary
+- Lets you preview items, bulk move them to trash, restore trashed files, restore all trash in one action, and permanently empty trash
+- Supports full-drive scans or folder-only scans by pasting a Google Drive folder URL/ID
+- Scans Gmail promotions/social counts with full pagination and Google Photos totals for a fuller storage summary
 - Works as a single deployable Node.js app for local use or Render
 
 ## Stack

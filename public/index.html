@@ -986,8 +986,24 @@
             <button id="startGmailBtn" class="btn btn-primary" onclick="startScan('gmail')" style="background:var(--gradient-lime)">Scan Gmail</button>
             <button id="startPhotosBtn" class="btn btn-primary" onclick="startScan('photos')" style="background:var(--gradient-cyan)">Find Photos</button>
             <button id="cancelScanBtn" class="btn btn-secondary hidden" onclick="cancelScan()">Stop</button>
+            <button class="btn btn-secondary" onclick="restoreAllTrash()" id="restoreTrashBtn" disabled>Restore All Trash</button>
             <button class="btn btn-danger" onclick="emptyTrash()" id="emptyTrashBtn" disabled>Empty Trash</button>
           </div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0 10px">
+          <input
+            type="text"
+            class="search-box"
+            id="scanFolderInput"
+            placeholder="Optional Google Drive folder URL or ID for a folder-only scan"
+            style="flex:1;min-width:280px"
+            oninput="persistScanScope()"
+          >
+          <button class="btn btn-secondary btn-sm" onclick="clearScanScope()">Clear Folder Scope</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:20px">
+          Leave this blank to scan the whole Drive. Paste a folder link or ID to scan only that folder tree.
         </div>
 
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px">
@@ -1011,6 +1027,8 @@
           <div style="flex:1;min-width:240px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:16px">
             <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">Latest Scan</div>
             <div id="scanStatusText" style="font-size:14px;color:var(--text)">No saved scan yet</div>
+            <div id="scanScopeText" style="font-size:13px;color:var(--text-dim);margin-top:10px">Scope: Entire Google Drive</div>
+            <div id="gmailSummaryText" style="font-size:13px;color:var(--text-dim);margin-top:10px">Gmail scan not run yet</div>
             <div id="photosSummaryText" style="font-size:13px;color:var(--text-dim);margin-top:10px">Photos scan not run yet</div>
           </div>
         </div>
@@ -1292,6 +1310,7 @@
       document.getElementById('loginSection').style.display = 'none';
       document.getElementById('mainHeader').classList.remove('hidden');
       document.getElementById('dashboard').classList.remove('hidden');
+      document.getElementById('scanFolderInput').value = localStorage.getItem('scanFolderInput') || '';
 
       connectWebSocket();
       await Promise.all([loadSessionInfo(), loadStorage(), loadLatestScan()]);
@@ -1362,6 +1381,9 @@
 
         const data = await response.json();
         scanData = { ...scanData, ...data };
+        if (!document.getElementById('scanFolderInput').value && data.scope?.mode === 'folder') {
+          document.getElementById('scanFolderInput').value = data.scope.folderId || '';
+        }
         rebuildFileLookup();
         updateStats();
 
@@ -1384,7 +1406,15 @@
 
       currentPage = 1;
       const payload = { type: 'startScan', session: currentSession };
+      if (type === 'drive') {
+        const scope = document.getElementById('scanFolderInput').value.trim();
+        if (scope) {
+          payload.scope = scope;
+        }
+        persistScanScope();
+      }
       if (type === 'gmail') payload.type = 'startGmailScan';
+      if (type === 'gmail') payload.olderThanDays = Number(document.getElementById('gmailAgeSelect').value || 365);
       if (type === 'photos') payload.type = 'startPhotosScan';
       ws.send(JSON.stringify(payload));
     }
@@ -1495,7 +1525,7 @@
         trash
       });
       localStorage.setItem('scanHistory', JSON.stringify(history.slice(0, 10)));
-      document.getElementById('lastScanTime').innerText = `Last scan: ${new Date().toLocaleString()}`;
+      document.getElementById('lastScanTime').innerText = `Last scan: ${new Date(data.capturedAt || Date.now()).toLocaleString()}`;
 
       document.getElementById('statTotal').innerText = total.toLocaleString();
       document.getElementById('quickTotal').innerText = total.toLocaleString();
@@ -1517,6 +1547,7 @@
 
       document.getElementById('quickSize').innerText = formatBytes(data.totalSize || 0);
       document.getElementById('emptyTrashBtn').disabled = trash === 0;
+      document.getElementById('restoreTrashBtn').disabled = trash === 0;
 
       const extDiv = document.getElementById('extBreakdown');
       extDiv.innerHTML = (data.extensions || [])
@@ -1577,6 +1608,8 @@
 
     function updateScanStatus() {
       const scanStatus = document.getElementById('scanStatusText');
+      const scanScope = document.getElementById('scanScopeText');
+      const gmailSummary = document.getElementById('gmailSummaryText');
       const photosSummary = document.getElementById('photosSummaryText');
 
       if (scanData.capturedAt) {
@@ -1585,8 +1618,29 @@
         scanStatus.innerText = 'No saved scan yet';
       }
 
+      if (scanData.scope?.mode === 'folder') {
+        const folderName = escapeHtml(scanData.scope.folderName || 'Selected folder');
+        if (scanData.scope.webViewLink) {
+          scanScope.innerHTML = `Scope: <a href="${scanData.scope.webViewLink}" target="_blank" rel="noopener">${folderName}</a> (trash is still account-wide)`;
+        } else {
+          scanScope.innerText = `Scope: ${scanData.scope.folderName || 'Selected folder'} (trash is still account-wide)`;
+        }
+      } else {
+        scanScope.innerText = 'Scope: Entire Google Drive';
+      }
+
+      if (scanData.gmailCapturedAt) {
+        const age = Number(scanData.gmailOlderThanDays || 365);
+        gmailSummary.innerText = `Gmail counts older than ${age.toLocaleString()} days updated ${new Date(scanData.gmailCapturedAt).toLocaleString()}`;
+      } else {
+        gmailSummary.innerText = 'Gmail scan not run yet';
+      }
+
       if (scanData.photos?.total) {
-        photosSummary.innerText = `${scanData.photos.total.toLocaleString()} photo items scanned, ${scanData.photos.videos.toLocaleString()} videos found`;
+        const suffix = scanData.photosCapturedAt
+          ? ` • updated ${new Date(scanData.photosCapturedAt).toLocaleString()}`
+          : '';
+        photosSummary.innerText = `${scanData.photos.total.toLocaleString()} photo items scanned, ${scanData.photos.videos.toLocaleString()} videos found${suffix}`;
       } else {
         photosSummary.innerText = 'Photos scan not run yet';
       }
@@ -1618,6 +1672,20 @@
       loadStorage();
     }
 
+    function persistScanScope() {
+      const value = document.getElementById('scanFolderInput').value.trim();
+      if (value) {
+        localStorage.setItem('scanFolderInput', value);
+      } else {
+        localStorage.removeItem('scanFolderInput');
+      }
+    }
+
+    function clearScanScope() {
+      document.getElementById('scanFolderInput').value = '';
+      localStorage.removeItem('scanFolderInput');
+    }
+
     async function cleanGmailCategory(category) {
       const olderThanDays = Number(document.getElementById('gmailAgeSelect').value || 365);
       const label = category === 'promotions' ? 'Promotions' : 'Social';
@@ -1646,16 +1714,30 @@
         document.getElementById('deleteModalText').innerText = data.message || 'Gmail cleaned';
         document.getElementById('deleteModalClose').classList.remove('hidden');
 
-        if (scanData.gmail) {
-          scanData.gmail[category] = Math.max(0, (scanData.gmail[category] || 0) - (data.deletedCount || 0));
-          updateStats();
-        }
+        scanData.gmail = { ...(scanData.gmail || {}) };
+        scanData.gmail[category] = Math.max(0, (scanData.gmail[category] || 0) - (data.deletedCount || 0));
+        scanData.gmailCapturedAt = new Date().toISOString();
+        scanData.gmailOlderThanDays = olderThanDays;
+        updateStats();
 
         setTimeout(() => startScan('gmail'), 1200);
       } catch (error) {
         document.getElementById('deleteModalText').innerText = `Error: ${error.message}`;
         document.getElementById('deleteModalClose').classList.remove('hidden');
       }
+    }
+
+    async function restoreAllTrash() {
+      const fileIds = (scanData.trash || []).map((file) => file.id).filter(Boolean);
+      if (fileIds.length === 0) {
+        return;
+      }
+
+      if (!confirm(`Restore all ${fileIds.length.toLocaleString()} trashed items?`)) {
+        return;
+      }
+
+      await restoreFiles(fileIds);
     }
 
     function showResults() {
