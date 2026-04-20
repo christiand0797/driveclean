@@ -1250,6 +1250,11 @@
       const data = scanData;
       const total = data.total || 0;
       const large = data.large?.length || 0;
+      
+      const history = JSON.parse(localStorage.getItem('scanHistory') || '[]');
+      history.unshift({ timestamp: Date.now(), total, large, dupes: data.duplicates?.length || 0, old: data.old?.length || 0, trash: data.trash?.length || 0 });
+      if (history.length > 10) history.pop();
+      localStorage.setItem('scanHistory', JSON.stringify(history));
       const dupes = data.duplicates?.length || 0;
       const old = data.old?.length || 0;
       const empty = data.empty?.length || 0;
