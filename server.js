@@ -451,6 +451,16 @@ app.get('/api/storage', validateSession, async (req, res) => {
   }
 });
 
+app.get('/api/scan/latest', validateSession, (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const scan = getLatestScan(sessionId);
+    res.json(scan);
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
 app.get('/api/export/csv', validateSession, async (req, res) => {
   try {
     const sessionId = req.headers['x-session'];
@@ -1040,6 +1050,7 @@ async function runDriveScan(jobId, ws) {
     categorySets.temporary.sort((a, b) => Number(b.size || 0) - Number(a.size || 0));
 
     const scanData = {
+      capturedAt: new Date().toISOString(),
       total: totalFiles,
       totalSize,
       files: activeFiles,

@@ -972,7 +972,7 @@
         </div>
       </div>
 
-<div class="card">
+      <div class="card">
         <div class="scanner-header">
           <h3>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -987,6 +987,31 @@
             <button id="startPhotosBtn" class="btn btn-primary" onclick="startScan('photos')" style="background:var(--gradient-cyan)">Find Photos</button>
             <button id="cancelScanBtn" class="btn btn-secondary hidden" onclick="cancelScan()">Stop</button>
             <button class="btn btn-danger" onclick="emptyTrash()" id="emptyTrashBtn" disabled>Empty Trash</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px">
+          <div style="flex:2;min-width:260px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:16px">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+              <div>
+                <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">Mailbox Cleanup</div>
+                <div style="font-size:14px;color:var(--text)">Delete old Promotions or Social mail from Gmail after scanning.</div>
+              </div>
+              <select class="select-box" id="gmailAgeSelect">
+                <option value="180">Older than 6 months</option>
+                <option value="365" selected>Older than 1 year</option>
+                <option value="730">Older than 2 years</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+              <button class="btn btn-secondary btn-sm" onclick="cleanGmailCategory('promotions')">Clean Promotions</button>
+              <button class="btn btn-secondary btn-sm" onclick="cleanGmailCategory('social')">Clean Social</button>
+            </div>
+          </div>
+          <div style="flex:1;min-width:240px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:16px">
+            <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">Latest Scan</div>
+            <div id="scanStatusText" style="font-size:14px;color:var(--text)">No saved scan yet</div>
+            <div id="photosSummaryText" style="font-size:13px;color:var(--text-dim);margin-top:10px">Photos scan not run yet</div>
           </div>
         </div>
         
@@ -1269,7 +1294,7 @@
       document.getElementById('dashboard').classList.remove('hidden');
 
       connectWebSocket();
-      await Promise.all([loadSessionInfo(), loadStorage()]);
+      await Promise.all([loadSessionInfo(), loadStorage(), loadLatestScan()]);
     }
 
     async function loadSessionInfo() {
@@ -1320,6 +1345,31 @@
       document.getElementById('progressSection').style.display = isScanning ? 'block' : 'none';
       if (isScanning) {
         document.getElementById('resultsSection').classList.add('hidden');
+      }
+    }
+
+    async function loadLatestScan() {
+      try {
+        const response = await authFetch('/api/scan/latest');
+        if (response.status === 401) {
+          await logout();
+          return;
+        }
+        if (response.status === 404) {
+          updateScanStatus();
+          return;
+        }
+
+        const data = await response.json();
+        scanData = { ...scanData, ...data };
+        rebuildFileLookup();
+        updateStats();
+
+        if (scanData.files?.length) {
+          showResults();
+        }
+      } catch (error) {
+        console.error(error);
       }
     }
 
@@ -1521,6 +1571,25 @@
       document.getElementById('quickNewest').innerText = datedFiles[datedFiles.length - 1]?.modifiedTime
         ? new Date(datedFiles[datedFiles.length - 1].modifiedTime).toLocaleDateString()
         : '--';
+
+      updateScanStatus();
+    }
+
+    function updateScanStatus() {
+      const scanStatus = document.getElementById('scanStatusText');
+      const photosSummary = document.getElementById('photosSummaryText');
+
+      if (scanData.capturedAt) {
+        scanStatus.innerText = `Drive scan saved ${new Date(scanData.capturedAt).toLocaleString()}`;
+      } else {
+        scanStatus.innerText = 'No saved scan yet';
+      }
+
+      if (scanData.photos?.total) {
+        photosSummary.innerText = `${scanData.photos.total.toLocaleString()} photo items scanned, ${scanData.photos.videos.toLocaleString()} videos found`;
+      } else {
+        photosSummary.innerText = 'Photos scan not run yet';
+      }
     }
 
     async function loadStorage() {
@@ -1547,6 +1616,46 @@
 
     function refreshStorage() {
       loadStorage();
+    }
+
+    async function cleanGmailCategory(category) {
+      const olderThanDays = Number(document.getElementById('gmailAgeSelect').value || 365);
+      const label = category === 'promotions' ? 'Promotions' : 'Social';
+
+      if (!confirm(`Delete ${label} emails older than ${olderThanDays} days?`)) {
+        return;
+      }
+
+      openDeleteModal(`✉️ Cleaning ${label}`, `Deleting old ${label.toLowerCase()} messages...`);
+
+      try {
+        const response = await authFetch('/api/gmail/clean', {
+          method: 'POST',
+          body: JSON.stringify({ category, olderThanDays })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Unable to clean Gmail');
+        }
+
+        document.getElementById('deleteProgressFill').style.width = '100%';
+        document.getElementById('deleteProcessed').innerText = data.deletedCount?.toLocaleString() || '0';
+        document.getElementById('deleteSuccess').innerText = data.deletedCount?.toLocaleString() || '0';
+        document.getElementById('deleteFailed').innerText = '0';
+        document.getElementById('deleteModalText').innerText = data.message || 'Gmail cleaned';
+        document.getElementById('deleteModalClose').classList.remove('hidden');
+
+        if (scanData.gmail) {
+          scanData.gmail[category] = Math.max(0, (scanData.gmail[category] || 0) - (data.deletedCount || 0));
+          updateStats();
+        }
+
+        setTimeout(() => startScan('gmail'), 1200);
+      } catch (error) {
+        document.getElementById('deleteModalText').innerText = `Error: ${error.message}`;
+        document.getElementById('deleteModalClose').classList.remove('hidden');
+      }
     }
 
     function showResults() {
@@ -1854,6 +1963,10 @@
       document.getElementById('deleteModalClose').classList.remove('hidden');
       document.getElementById('deleteModalText').innerText = `${meta.complete} ${success} files.${failed ? ` ${failed} failed.` : ''}`;
 
+      if (successIds.length > 0 && typeof meta.afterSuccess === 'function') {
+        meta.afterSuccess(successIds);
+      }
+
       if (meta.allowUndo && successIds.length > 0) {
         recentlyDeleted = [...successIds];
         const undoButton = document.createElement('button');
@@ -1889,7 +2002,8 @@
         title: '🗑️ Deleting Files',
         verb: 'Deleting',
         complete: 'Moved to trash:',
-        allowUndo: true
+        allowUndo: true,
+        afterSuccess: applyLocalDelete
       });
     }
 
@@ -1904,7 +2018,8 @@
         title: '♻️ Restoring Files',
         verb: 'Restoring',
         complete: 'Restored:',
-        allowUndo: false
+        allowUndo: false,
+        afterSuccess: applyLocalRestore
       });
     }
 
@@ -1932,6 +2047,10 @@
         document.getElementById('deleteFailed').innerText = '0';
         document.getElementById('deleteModalText').innerText = data.message || 'Trash emptied';
         document.getElementById('deleteModalClose').classList.remove('hidden');
+        scanData.trash = [];
+        rebuildFileLookup();
+        updateStats();
+        renderFiles();
         setTimeout(() => startScan('drive'), 1200);
       } catch (error) {
         document.getElementById('deleteModalText').innerText = `Error: ${error.message}`;
@@ -1996,6 +2115,49 @@ ${files.map((file) => `<div class="file"><div class="name">${escapeHtml(file.nam
     function previewById(id) {
       const file = fileLookup.get(id);
       if (file) previewFile(file);
+    }
+
+    function applyLocalDelete(successIds) {
+      const removedIds = new Set(successIds);
+      const removedFiles = successIds
+        .map((id) => fileLookup.get(id))
+        .filter(Boolean)
+        .map((file) => ({ ...file, trashed: true }));
+
+      const removeIds = (items) => (items || []).filter((item) => !removedIds.has(item.id));
+      scanData.files = removeIds(scanData.files);
+      scanData.large = removeIds(scanData.large);
+      scanData.duplicates = removeIds(scanData.duplicates);
+      scanData.old = removeIds(scanData.old);
+      scanData.empty = removeIds(scanData.empty);
+      scanData.emptyFolders = removeIds(scanData.emptyFolders);
+      scanData.hidden = removeIds(scanData.hidden);
+      scanData.orphan = removeIds(scanData.orphan);
+      scanData.shared = removeIds(scanData.shared);
+      scanData.ownedByOthers = removeIds(scanData.ownedByOthers);
+      scanData.public = removeIds(scanData.public);
+      scanData.temporary = removeIds(scanData.temporary);
+      scanData.folderSizes = removeIds(scanData.folderSizes);
+      scanData.trash = [...removedFiles, ...(scanData.trash || []).filter((item) => !removedIds.has(item.id))];
+      scanData.total = Math.max(0, (scanData.total || 0) - removedFiles.length);
+      scanData.totalSize = Math.max(0, (scanData.totalSize || 0) - removedFiles.reduce((sum, file) => sum + Number(file.size || 0), 0));
+      rebuildFileLookup();
+      updateStats();
+    }
+
+    function applyLocalRestore(successIds) {
+      const restoredIds = new Set(successIds);
+      const restoredFiles = successIds
+        .map((id) => fileLookup.get(id))
+        .filter(Boolean)
+        .map((file) => ({ ...file, trashed: false }));
+
+      scanData.trash = (scanData.trash || []).filter((item) => !restoredIds.has(item.id));
+      scanData.files = [...restoredFiles, ...(scanData.files || []).filter((item) => !restoredIds.has(item.id))];
+      scanData.total = (scanData.total || 0) + restoredFiles.length;
+      scanData.totalSize = (scanData.totalSize || 0) + restoredFiles.reduce((sum, file) => sum + Number(file.size || 0), 0);
+      rebuildFileLookup();
+      updateStats();
     }
 
     function previewFile(file) {
