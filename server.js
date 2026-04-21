@@ -24,6 +24,7 @@ const sessions = new Map();
 const scanJobs = new Map();
 const latestScans = new Map();
 const authStates = new Map();
+const SCANS_FILE = path.join(__dirname, 'scans.json');
 
 const log = (msg, type = 'info') => {
   const timestamp = new Date().toISOString();
@@ -100,6 +101,36 @@ function saveSessions() {
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify(serialized, null, 2));
   } catch (error) {
     log(`Failed to save sessions: ${error.message}`, 'error');
+  }
+}
+
+function loadScans() {
+  try {
+    if (!fs.existsSync(SCANS_FILE)) {
+      return;
+    }
+    const data = JSON.parse(fs.readFileSync(SCANS_FILE, 'utf8'));
+    for (const [sessionId, scan] of Object.entries(data)) {
+      latestScans.set(sessionId, scan);
+    }
+    log(`Loaded ${latestScans.size} scans from disk.`);
+  } catch (error) {
+    log(`Failed to load scans: ${error.message}`, 'error');
+  }
+}
+
+function saveScans() {
+  try {
+    const serialized = Object.fromEntries(latestScans);
+    const filtered = {};
+    for (const [sessionId, scan] of Object.entries(serialized)) {
+      if (scan.capturedAt) {
+        filtered[sessionId] = scan;
+      }
+    }
+    fs.writeFileSync(SCANS_FILE, JSON.stringify(filtered, null, 2));
+  } catch (error) {
+    log(`Failed to save scans: ${error.message}`, 'error');
   }
 }
 
@@ -1322,11 +1353,28 @@ async function runDriveScan(jobId, ws) {
       folderSizes
     };
 
-    const mergedScanData = mergeLatestScan(job.session, scanData);
+    saveScans();
+
+    const summary = {
+      capturedAt: scanData.capturedAt,
+      scope: scanData.scope,
+      total: scanData.total,
+      totalSize: scanData.totalSize,
+      large: scanData.large?.length || 0,
+      old: scanData.old?.length || 0,
+      empty: scanData.empty?.length || 0,
+      duplicates: scanData.duplicates?.length || 0,
+      hidden: scanData.hidden?.length || 0,
+      trash: scanData.trash?.length || 0,
+      extensions: scanData.extensions,
+      mimeTypes: scanData.mimeTypes,
+      folderSizes: scanData.folderSizes,
+      __triggerFetch: true
+    };
     updateJob(jobId, ws, {
       stage: 'Complete',
       progress: 100,
-      data: mergedScanData
+      data: summary
     });
     finishJob(jobId);
     log(
@@ -1344,7 +1392,9 @@ app.get('/', (req, res) => {
 });
 
 loadSessions();
+loadScans();
 setInterval(saveSessions, 5 * 60 * 1000);
+setInterval(saveScans, 5 * 60 * 1000);
 setInterval(cleanupAuthStates, 5 * 60 * 1000);
 
 process.on('SIGINT', () => shutdown('SIGINT'));

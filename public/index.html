@@ -1380,7 +1380,7 @@
         }
 
         const data = await response.json();
-        scanData = { ...scanData, ...data };
+        scanData = data;
         if (!document.getElementById('scanFolderInput').value && data.scope?.mode === 'folder') {
           document.getElementById('scanFolderInput').value = data.scope.folderId || '';
         }
@@ -1388,6 +1388,8 @@
         updateStats();
 
         if (scanData.files?.length) {
+          showResults();
+        } else if (scanData.total > 0) {
           showResults();
         }
       } catch (error) {
@@ -1454,17 +1456,19 @@
       currentJobId = null;
       toggleScanUI(false);
 
-      if (msg.data) {
+      if (msg.data?.__triggerFetch) {
+        await loadLatestScan();
+      } else if (msg.data) {
         scanData = { ...scanData, ...msg.data };
+        rebuildFileLookup();
+        updateStats();
+        loadStorage();
+        if (scanData.files?.length) {
+          showResults();
+        }
       }
 
-      rebuildFileLookup();
-      updateStats();
-      loadStorage();
-
-      if (scanData.files?.length) {
-        showResults();
-      } else if (msg.data?.gmail || msg.data?.photos) {
+      if (msg.data?.gmail || msg.data?.photos) {
         alert('Scan complete. The summary cards have been updated.');
       }
     }
