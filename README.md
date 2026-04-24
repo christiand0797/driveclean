@@ -24,7 +24,7 @@ Open source Google Drive cleanup app built for fast, safe storage cleanup.
 ## Local setup
 
 ```bash
-npm install
+npm ci
 npm start
 npm test
 npm run check

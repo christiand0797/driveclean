@@ -4,7 +4,6 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
 const { google } = require('googleapis');
 const path = require('path');
 const crypto = require('crypto');
@@ -48,6 +47,10 @@ const DRIVE_SCAN_KEYS = [
   'mimeTypes',
   'folderSizes'
 ];
+
+function createId() {
+  return crypto.randomUUID();
+}
 
 const log = (msg, type = 'info') => {
   const timestamp = new Date().toISOString();
@@ -587,7 +590,7 @@ function collectCategories(scan, category) {
 app.get('/api/auth/url', (req, res) => {
   cleanupAuthStates();
   const oauth = oauthClient();
-  const state = uuidv4();
+  const state = createId();
   authStates.set(state, Date.now());
 
   const url = oauth.generateAuthUrl({
@@ -626,7 +629,7 @@ app.get('/api/auth/callback', async (req, res) => {
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth });
     const user = await oauth2.userinfo.get();
 
-    const sessionId = uuidv4();
+    const sessionId = createId();
     sessions.set(sessionId, {
       email: user.data.email,
       name: user.data.name || user.data.email,
@@ -904,7 +907,7 @@ wss.on('connection', (ws) => {
       const data = JSON.parse(message);
 
       if (data.type === 'startScan') {
-        const jobId = uuidv4();
+        const jobId = createId();
         scanJobs.set(jobId, {
           session: data.session,
           scope: data.scope || null,
@@ -917,7 +920,7 @@ wss.on('connection', (ws) => {
       }
 
       if (data.type === 'startGmailScan') {
-        const jobId = uuidv4();
+        const jobId = createId();
         scanJobs.set(jobId, {
           session: data.session,
           olderThanDays: Number(data.olderThanDays) || 365,
@@ -930,7 +933,7 @@ wss.on('connection', (ws) => {
       }
 
       if (data.type === 'startPhotosScan') {
-        const jobId = uuidv4();
+        const jobId = createId();
         scanJobs.set(jobId, { session: data.session, cancel: false, progress: 0, stage: 'Queued' });
         ws.send(JSON.stringify({ type: 'jobStarted', jobId }));
         await runPhotosScan(jobId, ws);
