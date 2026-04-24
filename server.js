@@ -25,6 +25,29 @@ const scanJobs = new Map();
 const latestScans = new Map();
 const authStates = new Map();
 const SCANS_FILE = path.join(__dirname, 'scans.json');
+const DRIVE_SCAN_KEYS = [
+  'capturedAt',
+  'scope',
+  'total',
+  'totalSize',
+  'files',
+  'duplicates',
+  'duplicateGroups',
+  'large',
+  'old',
+  'empty',
+  'emptyFolders',
+  'hidden',
+  'orphan',
+  'shared',
+  'ownedByOthers',
+  'public',
+  'temporary',
+  'trash',
+  'extensions',
+  'mimeTypes',
+  'folderSizes'
+];
 
 const log = (msg, type = 'info') => {
   const timestamp = new Date().toISOString();
@@ -65,6 +88,9 @@ const validateSession = (req, res, next) => {
   const session = req.headers['x-session'] || req.query.session;
   if (!session || typeof session !== 'string' || session.length > 100) {
     return res.status(400).json({ error: 'Invalid session ID format' });
+  }
+  if (!sessions.has(session)) {
+    return res.status(401).json({ error: 'Session missing' });
   }
   next();
 };
@@ -111,7 +137,9 @@ function loadScans() {
     }
     const data = JSON.parse(fs.readFileSync(SCANS_FILE, 'utf8'));
     for (const [sessionId, scan] of Object.entries(data)) {
-      latestScans.set(sessionId, scan);
+      if (sessions.has(sessionId) && hasPersistableScanData(scan)) {
+        latestScans.set(sessionId, scan);
+      }
     }
     log(`Loaded ${latestScans.size} scans from disk.`);
   } catch (error) {
@@ -124,7 +152,7 @@ function saveScans() {
     const serialized = Object.fromEntries(latestScans);
     const filtered = {};
     for (const [sessionId, scan] of Object.entries(serialized)) {
-      if (scan.capturedAt) {
+      if (sessions.has(sessionId) && hasPersistableScanData(scan)) {
         filtered[sessionId] = scan;
       }
     }
@@ -310,6 +338,14 @@ function buildExtension(name) {
   return name.split('.').pop().toLowerCase();
 }
 
+function hasPersistableScanData(scan) {
+  if (!scan || typeof scan !== 'object') {
+    return false;
+  }
+
+  return Boolean(scan.capturedAt || scan.gmailCapturedAt || scan.photosCapturedAt);
+}
+
 function parseDriveFolderId(input) {
   if (!input) {
     return null;
@@ -378,7 +414,28 @@ async function resolveDriveScanScope(drive, scopeInput) {
 function mergeLatestScan(sessionId, patch) {
   const merged = { ...(latestScans.get(sessionId) || {}), ...patch };
   latestScans.set(sessionId, merged);
+  saveScans();
   return merged;
+}
+
+function invalidateDriveInventory(sessionId) {
+  const existing = latestScans.get(sessionId);
+  if (!existing) {
+    return null;
+  }
+
+  const next = { ...existing };
+  for (const key of DRIVE_SCAN_KEYS) {
+    delete next[key];
+  }
+
+  if (hasPersistableScanData(next)) {
+    latestScans.set(sessionId, next);
+  } else {
+    latestScans.delete(sessionId);
+  }
+  saveScans();
+  return next;
 }
 
 async function countGmailMessages(gmail, query, onProgress) {
@@ -582,6 +639,7 @@ app.post('/api/auth/logout', validateSession, async (req, res) => {
     sessions.delete(sessionId);
     latestScans.delete(sessionId);
     saveSessions();
+    saveScans();
     log(`User logged out: ${session.email}`);
     res.json({ ok: true });
   } catch (error) {
@@ -697,8 +755,12 @@ app.post('/api/files/delete', validateSession, async (req, res) => {
 
     log(`Deleting ${fileIds.length} files for session ${sessionId}`);
     const result = await mutateFiles(sessionId, fileIds, { trashed: true });
+    if (result.successCount > 0) {
+      invalidateDriveInventory(sessionId);
+    }
     res.json({
       message: `Moved ${result.successCount} files to trash.`,
+      inventoryInvalidated: result.successCount > 0,
       ...result
     });
   } catch (error) {
@@ -715,8 +777,12 @@ app.post('/api/files/restore', validateSession, async (req, res) => {
     }
 
     const result = await mutateFiles(sessionId, fileIds, { trashed: false });
+    if (result.successCount > 0) {
+      invalidateDriveInventory(sessionId);
+    }
     res.json({
       message: `Restored ${result.successCount} files.`,
+      inventoryInvalidated: result.successCount > 0,
       ...result
     });
   } catch (error) {
@@ -768,7 +834,7 @@ app.post('/api/trash/empty', validateSession, async (req, res) => {
     } while (pageToken);
 
     if (latestScans.has(sessionId)) {
-      mergeLatestScan(sessionId, { trash: [] });
+      invalidateDriveInventory(sessionId);
     }
 
     res.json({ message: `Permanently deleted ${deletedCount} items.`, deletedCount });
@@ -901,6 +967,11 @@ async function runPhotosScan(jobId, ws) {
       const url = `https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=100${pageToken ? `&pageToken=${pageToken}` : ''}`;
       const response = await fetch(url, { headers });
       const data = await response.json();
+      if (!response.ok) {
+        const error = new Error(data?.error?.message || 'Photos scan failed.');
+        error.statusCode = response.status;
+        throw error;
+      }
 
       const items = data.mediaItems || [];
       totalItems += items.length;
@@ -1353,22 +1424,22 @@ async function runDriveScan(jobId, ws) {
       folderSizes
     };
 
-    saveScans();
+    const persistedScan = mergeLatestScan(job.session, scanData);
 
     const summary = {
-      capturedAt: scanData.capturedAt,
-      scope: scanData.scope,
-      total: scanData.total,
-      totalSize: scanData.totalSize,
-      large: scanData.large?.length || 0,
-      old: scanData.old?.length || 0,
-      empty: scanData.empty?.length || 0,
-      duplicates: scanData.duplicates?.length || 0,
-      hidden: scanData.hidden?.length || 0,
-      trash: scanData.trash?.length || 0,
-      extensions: scanData.extensions,
-      mimeTypes: scanData.mimeTypes,
-      folderSizes: scanData.folderSizes,
+      capturedAt: persistedScan.capturedAt,
+      scope: persistedScan.scope,
+      total: persistedScan.total,
+      totalSize: persistedScan.totalSize,
+      large: persistedScan.large?.length || 0,
+      old: persistedScan.old?.length || 0,
+      empty: persistedScan.empty?.length || 0,
+      duplicates: persistedScan.duplicates?.length || 0,
+      hidden: persistedScan.hidden?.length || 0,
+      trash: persistedScan.trash?.length || 0,
+      extensions: persistedScan.extensions,
+      mimeTypes: persistedScan.mimeTypes,
+      folderSizes: persistedScan.folderSizes,
       __triggerFetch: true
     };
     updateJob(jobId, ws, {
@@ -1393,6 +1464,7 @@ app.get('/', (req, res) => {
 
 loadSessions();
 loadScans();
+saveScans();
 setInterval(saveSessions, 5 * 60 * 1000);
 setInterval(saveScans, 5 * 60 * 1000);
 setInterval(cleanupAuthStates, 5 * 60 * 1000);
@@ -1403,6 +1475,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 function shutdown(signal) {
   log(`Received ${signal}. Saving sessions and shutting down...`);
   saveSessions();
+  saveScans();
   server.close(() => {
     log('HTTP server closed.');
     process.exit(0);

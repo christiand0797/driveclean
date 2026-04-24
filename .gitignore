@@ -5,6 +5,7 @@ node_modules/
 .npm/
 .yarn/
 sessions.json
+scans.json
 *.swp
 *.swo
 .vscode/

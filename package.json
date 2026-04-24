@@ -4,7 +4,8 @@
   "description": "Open source Google Drive, Gmail, and Photos cleanup app",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "keywords": [
     "google-drive",

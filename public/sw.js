@@ -1,13 +1,18 @@
-const CACHE_NAME = 'driveclean-v2';
+const CACHE_NAME = 'driveclean-v3';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
   );
+  self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   const url = new URL(event.request.url);
   const isAppShellRequest = event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('/index.html');
 
@@ -31,10 +36,13 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(cacheNames.map((cacheName) => {
-        if (cacheName !== CACHE_NAME) caches.delete(cacheName);
-      }));
-    })
+    Promise.all([
+      caches.keys().then((cacheNames) => {
+        return Promise.all(cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) caches.delete(cacheName);
+        }));
+      }),
+      self.clients.claim()
+    ])
   );
 });

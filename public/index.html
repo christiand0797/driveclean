@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#9d4edd">
-  <meta name="description" content="Ultimate Google Drive, Photos & Gmail cleanup tool">
-  <title>DriveClean Pro</title>
+  <meta name="description" content="Open source Google Drive, Gmail, and Photos cleanup app">
+  <title>DriveClean</title>
   <link rel="manifest" href="/manifest.json">
   <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
@@ -1429,7 +1429,7 @@
       toggleScanUI(false);
     }
 
-    function updateProgress(msg) {
+    async function updateProgress(msg) {
       document.getElementById('progressStage').innerText = msg.stage || 'Working...';
       document.getElementById('progressFill').style.width = `${msg.progress || 0}%`;
       document.getElementById('progressText').innerText = msg.error || msg.stage || 'Working...';
@@ -1458,6 +1458,7 @@
 
       if (msg.data?.__triggerFetch) {
         await loadLatestScan();
+        await loadStorage();
       } else if (msg.data) {
         scanData = { ...scanData, ...msg.data };
         rebuildFileLookup();

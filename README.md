@@ -11,6 +11,7 @@ Open source Google Drive cleanup app built for fast, safe storage cleanup.
 - Supports full-drive scans or folder-only scans by pasting a Google Drive folder URL/ID
 - Scans Gmail promotions/social counts with full pagination and Google Photos totals for a fuller storage summary
 - Works as a single deployable Node.js app for local use or Render
+- Persists session-safe scan snapshots to disk so refreshes and restarts keep the latest results
 
 ## Stack
 
@@ -24,6 +25,7 @@ Open source Google Drive cleanup app built for fast, safe storage cleanup.
 ```bash
 npm install
 npm start
+npm test
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -57,6 +59,7 @@ Copy `.env.example` and fill in:
 
 - DriveClean moves files to trash by default before permanent deletion.
 - Session tokens are encrypted before being written to disk.
+- Drive scan snapshots are persisted to `scans.json`, and stale snapshots are pruned when sessions disappear.
 - Scan payloads include the full file inventory for the current session so the UI can filter and paginate locally.
 
 ## License
