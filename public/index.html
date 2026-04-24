@@ -2350,7 +2350,13 @@ ${files.map((file) => `<div class="file"><div class="name">${escapeHtml(file.nam
         headers['Content-Type'] = 'application/json';
       }
 
-      return fetch(url, { ...options, headers });
+      const response = await fetch(url, { ...options, headers });
+      if (response.status === 401 && currentSession && !String(url).includes('/api/auth/logout')) {
+        currentSession = null;
+        localStorage.removeItem('session');
+        setTimeout(() => window.location.reload(), 0);
+      }
+      return response;
     }
 
     function buildDriveLink(file) {
