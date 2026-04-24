@@ -413,6 +413,11 @@ async function resolveDriveScanScope(drive, scopeInput) {
 
 function mergeLatestScan(sessionId, patch) {
   const merged = { ...(latestScans.get(sessionId) || {}), ...patch };
+  if (patch.capturedAt) {
+    delete merged.inventoryStale;
+    delete merged.inventoryInvalidatedAt;
+    delete merged.lastDriveCapturedAt;
+  }
   latestScans.set(sessionId, merged);
   saveScans();
   return merged;
@@ -425,8 +430,15 @@ function invalidateDriveInventory(sessionId) {
   }
 
   const next = { ...existing };
+  const previousCapturedAt = existing.capturedAt || existing.lastDriveCapturedAt || null;
   for (const key of DRIVE_SCAN_KEYS) {
     delete next[key];
+  }
+
+  next.inventoryStale = true;
+  next.inventoryInvalidatedAt = new Date().toISOString();
+  if (previousCapturedAt) {
+    next.lastDriveCapturedAt = previousCapturedAt;
   }
 
   if (hasPersistableScanData(next)) {

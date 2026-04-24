@@ -1027,6 +1027,7 @@
           <div style="flex:1;min-width:240px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:16px">
             <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">Latest Scan</div>
             <div id="scanStatusText" style="font-size:14px;color:var(--text)">No saved scan yet</div>
+            <div id="inventoryNoticeText" style="font-size:13px;color:var(--warning);margin-top:10px;display:none"></div>
             <div id="scanScopeText" style="font-size:13px;color:var(--text-dim);margin-top:10px">Scope: Entire Google Drive</div>
             <div id="gmailSummaryText" style="font-size:13px;color:var(--text-dim);margin-top:10px">Gmail scan not run yet</div>
             <div id="photosSummaryText" style="font-size:13px;color:var(--text-dim);margin-top:10px">Photos scan not run yet</div>
@@ -1391,6 +1392,8 @@
           showResults();
         } else if (scanData.total > 0) {
           showResults();
+        } else {
+          document.getElementById('resultsSection').classList.add('hidden');
         }
       } catch (error) {
         console.error(error);
@@ -1530,7 +1533,12 @@
         trash
       });
       localStorage.setItem('scanHistory', JSON.stringify(history.slice(0, 10)));
-      document.getElementById('lastScanTime').innerText = `Last scan: ${new Date(data.capturedAt || Date.now()).toLocaleString()}`;
+      if (data.inventoryStale) {
+        const referenceTime = data.lastDriveCapturedAt || data.inventoryInvalidatedAt || Date.now();
+        document.getElementById('lastScanTime').innerText = `Last drive inventory is stale • previous scan ${new Date(referenceTime).toLocaleString()}`;
+      } else {
+        document.getElementById('lastScanTime').innerText = `Last scan: ${new Date(data.capturedAt || Date.now()).toLocaleString()}`;
+      }
 
       document.getElementById('statTotal').innerText = total.toLocaleString();
       document.getElementById('quickTotal').innerText = total.toLocaleString();
@@ -1613,14 +1621,26 @@
 
     function updateScanStatus() {
       const scanStatus = document.getElementById('scanStatusText');
+      const inventoryNotice = document.getElementById('inventoryNoticeText');
       const scanScope = document.getElementById('scanScopeText');
       const gmailSummary = document.getElementById('gmailSummaryText');
       const photosSummary = document.getElementById('photosSummaryText');
 
-      if (scanData.capturedAt) {
+      if (scanData.inventoryStale) {
+        const previous = scanData.lastDriveCapturedAt
+          ? new Date(scanData.lastDriveCapturedAt).toLocaleString()
+          : 'an earlier time';
+        scanStatus.innerText = 'Drive inventory needs a refresh';
+        inventoryNotice.style.display = 'block';
+        inventoryNotice.innerText = `Drive files changed after cleanup. Re-run Scan Drive to rebuild accurate lists. Previous full scan: ${previous}.`;
+      } else if (scanData.capturedAt) {
         scanStatus.innerText = `Drive scan saved ${new Date(scanData.capturedAt).toLocaleString()}`;
+        inventoryNotice.style.display = 'none';
+        inventoryNotice.innerText = '';
       } else {
         scanStatus.innerText = 'No saved scan yet';
+        inventoryNotice.style.display = 'none';
+        inventoryNotice.innerText = '';
       }
 
       if (scanData.scope?.mode === 'folder') {

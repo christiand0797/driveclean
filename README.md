@@ -19,6 +19,7 @@ Open source Google Drive cleanup app built for fast, safe storage cleanup.
 - Google Drive, Gmail, Photos, and OAuth APIs
 - Vanilla HTML/CSS/JS frontend
 - WebSocket scan progress updates
+- GitHub Actions CI smoke tests
 
 ## Local setup
 

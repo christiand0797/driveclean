@@ -36,7 +36,7 @@ And both origins:
 - Latest scan snapshots are persisted to `scans.json` for active sessions
 - OAuth state values are validated server-side before the callback completes
 - Scan results stay in memory per active session for exports and UI refreshes
-- The service worker uses a fresh app-shell cache version (`driveclean-v3`)
+- The service worker uses a fresh app-shell cache version (`driveclean-v4`)
 
 ## Troubleshooting
 

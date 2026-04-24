@@ -1,4 +1,4 @@
-const CACHE_NAME = 'driveclean-v3';
+const CACHE_NAME = 'driveclean-v4';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -20,8 +20,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy)).catch(() => {});
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy)).catch(() => {});
+          }
           return response;
         })
         .catch(() => caches.match('/index.html'))

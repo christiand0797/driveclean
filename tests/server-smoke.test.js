@@ -38,7 +38,7 @@ async function waitForServer(url, timeoutMs = 15000) {
   throw lastError || new Error(`Timed out waiting for ${url}`);
 }
 
-test('server boots and serves core assets', async (t) => {
+async function startServer(t) {
   const cwd = path.resolve(__dirname, '..');
   const port = await getFreePort();
   const child = spawn(process.execPath, ['server.js'], {
@@ -69,7 +69,14 @@ test('server boots and serves core assets', async (t) => {
     await once(child, 'exit').catch(() => {});
   });
 
-  const healthResponse = await waitForServer(`http://127.0.0.1:${port}/health`);
+  await waitForServer(`http://127.0.0.1:${port}/health`);
+  return { port, logsRef: () => logs };
+}
+
+test('server boots and serves core assets', async (t) => {
+  const { port, logsRef } = await startServer(t);
+
+  const healthResponse = await fetch(`http://127.0.0.1:${port}/health`);
   const health = await healthResponse.json();
   assert.equal(health.status, 'ok');
   assert.equal(typeof health.uptime, 'number');
@@ -87,7 +94,32 @@ test('server boots and serves core assets', async (t) => {
   const serviceWorkerResponse = await fetch(`http://127.0.0.1:${port}/sw.js`);
   assert.equal(serviceWorkerResponse.status, 200);
   const serviceWorker = await serviceWorkerResponse.text();
-  assert.match(serviceWorker, /driveclean-v3/);
+  assert.match(serviceWorker, /driveclean-v4/);
 
-  assert.doesNotMatch(logs, /EADDRINUSE/);
+  assert.doesNotMatch(logsRef(), /EADDRINUSE/);
+});
+
+test('protected endpoints reject unknown sessions', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/session`, {
+    headers: { 'x-session': 'missing-session' }
+  });
+
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.match(body.error, /Session missing/i);
+});
+
+test('auth url endpoint returns configured callback host', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/auth/url`);
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  assert.equal(typeof body.url, 'string');
+  const url = new URL(body.url);
+  assert.match(url.toString(), /oauth/i);
+  assert.equal(url.searchParams.get('redirect_uri'), `http://127.0.0.1:${port}/api/auth/callback`);
 });
