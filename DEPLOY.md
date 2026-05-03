@@ -1,58 +1,109 @@
 # Deploy Guide
 
-## Render setup
+## Status
 
-1. Push this repository to GitHub.
-2. Create a new Render Web Service.
-3. Use:
-   - Build command: `npm install`
-   - Start command: `node server.js`
-4. Add these environment variables:
+- **GitHub:** https://github.com/christiand0797/driveclean
+- **Render:** https://driveclean.onrender.com
+- **Google Cloud project:** ASSETTO MODS
+- **Credentials page:** https://console.cloud.google.com/apis/credentials?project=assetto-mods
 
-| Variable | Purpose |
-| --- | --- |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `REDIRECT_URI` | Full callback URL, e.g. `https://your-app.onrender.com/api/auth/callback` |
-| `ENCRYPTION_KEY` | Stable secret used to encrypt stored session tokens |
-| `PORT` | Optional; Render sets this automatically |
-| `SCAN_LIMIT` | Optional upper bound for active-file scan payload size |
+---
 
-## OAuth checklist
+## Step 1 — Get the real client secret from Google Cloud
 
-Make sure the Google OAuth client includes both your local and hosted callback URLs:
+The `.env` currently has a placeholder secret. You need the real one:
 
-- `http://localhost:3000/api/auth/callback`
-- `https://your-app.onrender.com/api/auth/callback`
+1. Go to: https://console.cloud.google.com/apis/credentials?project=assetto-mods
+2. Find the OAuth 2.0 Client ID: `264924479984-v3m9cklc4g18i17g9n1540lslo89acj2.apps.googleusercontent.com`
+3. Click the **edit pencil** ✏️
+4. Copy the **Client Secret** (starts with `GOCSPX-`)
+5. Paste it into `.env` as `GOOGLE_CLIENT_SECRET=<the real value>`
 
-And both origins:
+Also confirm these are configured on that OAuth client:
 
-- `http://localhost:3000`
-- `https://your-app.onrender.com`
+**Authorized JavaScript origins:**
+```
+http://localhost:3000
+https://driveclean.onrender.com
+```
 
-## Runtime behavior
+**Authorized redirect URIs:**
+```
+http://localhost:3000/api/auth/callback
+https://driveclean.onrender.com/api/auth/callback
+```
 
-- Sessions are stored in memory and persisted to `sessions.json`
-- Latest scan snapshots are persisted to `scans.json` for active sessions
-- OAuth state values are validated server-side before the callback completes
-- Scan results stay in memory per active session for exports and UI refreshes
-- The service worker uses a fresh app-shell cache version (`driveclean-v4`)
+If either is missing, click **Add URI**, paste it, click **Save**.
+
+---
+
+## Step 2 — Set environment variables on Render
+
+1. Go to: https://dashboard.render.com → select **driveclean** service → **Environment**
+2. Add these env vars (Add Variable for each):
+
+| Key | Value |
+|-----|-------|
+| `GOOGLE_CLIENT_ID` | `264924479984-v3m9cklc4g18i17g9n1540lslo89acj2.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | `<the real secret from Step 1>` |
+| `REDIRECT_URI` | `https://driveclean.onrender.com/api/auth/callback` |
+| `ENCRYPTION_KEY` | Run `node -e "require('crypto').randomBytes(32).toString('hex')|>console.log"` and paste the output — OR let Render generate it via `render.yaml` |
+| `SCAN_LIMIT` | `50000` |
+
+3. Click **Save Changes** — Render will redeploy automatically.
+
+---
+
+## Step 3 — Add test user to OAuth consent screen (if not already done)
+
+Go to: https://console.cloud.google.com/apis/credentials/consent?project=assetto-mods
+
+Confirm `christiand0797@gmail.com` is listed under **Test users**. If not, click **Add users** and add it.
+
+---
+
+## Step 4 — Run locally
+
+```bash
+# Make sure .env has the real GOOGLE_CLIENT_SECRET filled in
+npm ci
+npm start
+# Open http://localhost:3000
+```
+
+---
+
+## Enabled APIs required (ASSETTO MODS project)
+
+Go to: https://console.cloud.google.com/apis/library?project=assetto-mods
+
+Make sure these are enabled:
+- **Google Drive API**
+- **Gmail API**
+- **Photos Library API**
+- **Google People API** (for userinfo/profile)
+
+---
+
+## Render service configuration
+
+`render.yaml` in the repo root declares the service config. Render reads it automatically on connect. The `generateValue: true` on `ENCRYPTION_KEY` means Render will create a stable random key on first deploy — don't override it after that or all existing sessions will break.
+
+---
 
 ## Troubleshooting
 
-### Login fails after Google auth
+### "redirect_uri_mismatch" on login
+The REDIRECT_URI in your Render env vars doesn't exactly match what's registered in Google Cloud. They must be byte-for-byte identical — no trailing slash.
 
-- Confirm `REDIRECT_URI` exactly matches the Google OAuth app
-- Confirm the deployed site origin is listed in Google Cloud
-- Check Render logs for OAuth or environment variable errors
+### Login succeeds but app shows "Session missing"
+The `ENCRYPTION_KEY` changed between deploys. In Render dashboard, check Environment → `ENCRYPTION_KEY` — if Render regenerated it, sessions from before that deploy are invalid (users just log in again).
 
-### Scans complete but categories look empty
+### Scans show empty categories
+Re-run a fresh Drive scan after deploying. Old cached scan snapshots from a different session don't carry over.
 
-- Re-run a Drive scan after deploying the latest code
-- Confirm the account granted Drive metadata permissions
-- Increase `SCAN_LIMIT` if the account is extremely large and the scan is being capped
+### App looks stale after deploy
+Hard refresh (Ctrl+Shift+R). If still stale, open browser devtools → Application → Service Workers → Unregister, then reload.
 
-### The app looks stale after deploy
-
-- Hard refresh once so the browser swaps to the new service worker cache
-- If needed, unregister the old service worker in browser devtools and reload
+### Free tier sleep (Render free plan)
+Render free services spin down after 15 minutes of inactivity and take ~30 seconds to cold-start. Upgrade to Starter ($7/mo) to keep it always on.

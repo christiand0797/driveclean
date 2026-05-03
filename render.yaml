@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: driveclean
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GOOGLE_CLIENT_ID
+        sync: false          # set in Render dashboard
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false          # set in Render dashboard
+      - key: REDIRECT_URI
+        value: https://driveclean.onrender.com/api/auth/callback
+      - key: ENCRYPTION_KEY
+        generateValue: true  # Render generates a stable random value on first deploy
+      - key: SCAN_LIMIT
+        value: "50000"
