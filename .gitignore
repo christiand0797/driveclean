@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.local
+.env.*.local
 *.log
 .DS_Store
 .npm/
@@ -12,3 +14,4 @@ scan_history.json
 .vscode/
 .idea/
 coverage/
+audit-results.json

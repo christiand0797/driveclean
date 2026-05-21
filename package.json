@@ -1,6 +1,6 @@
 {
   "name": "driveclean",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Open source Google Drive, Gmail, and Photos cleanup app",
   "main": "server.js",
   "scripts": {
@@ -13,8 +13,21 @@
     "gmail",
     "cleanup",
     "duplicate-finder",
-    "file-manager"
+    "file-manager",
+    "storage-cleanup",
+    "google-photos",
+    "open-source"
   ],
+  "author": "christiand0797",
+  "license": "MIT",
+  "homepage": "https://driveclean.onrender.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/christiand0797/driveclean.git"
+  },
+  "bugs": {
+    "url": "https://github.com/christiand0797/driveclean/issues"
+  },
   "dependencies": {
     "crypto-js": "^4.2.0",
     "dotenv": "^16.3.1",
@@ -24,11 +37,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "license": "MIT",
-  "homepage": "https://driveclean.onrender.com",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/christiand0797/driveclean.git"
   }
 }
