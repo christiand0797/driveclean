@@ -1605,6 +1605,8 @@
     let currentSession = null;
     let ws = null;
     let scanData = {};
+    let fileCache = new Map();
+    let fileFetchPromises = new Map();
     let selectedFiles = new Set();
     let currentTab = 'all';
     let currentJobId = null;
@@ -1812,27 +1814,69 @@
         }
 
         const data = await response.json();
-        scanData = data;
+        scanData = {
+          ...data,
+          files: data.hasFiles ? [] : (scanData.files || []),
+          large: scanData.large || [],
+          duplicates: scanData.duplicates || [],
+          old: scanData.old || [],
+          empty: scanData.empty || [],
+          emptyFolders: scanData.emptyFolders || [],
+          hidden: scanData.hidden || [],
+          orphan: scanData.orphan || [],
+          shared: scanData.shared || [],
+          ownedByOthers: scanData.ownedByOthers || [],
+          public: scanData.public || [],
+          temporary: scanData.temporary || [],
+          trash: scanData.trash || [],
+          folderSizes: scanData.folderSizes || []
+        };
+        fileCache.clear();
+        fileFetchPromises.clear();
 
         if (!document.getElementById('scanFolderInput').value && data.scope?.mode === 'folder') {
           document.getElementById('scanFolderInput').value = data.scope.folderId || '';
         }
 
-      rebuildFileLookup();
-      updateStats();
-      updateStatus();
+        updateStats();
+        updateStatus();
 
-      const hasFiles = Array.isArray(scanData.files) && scanData.files.length > 0;
         const hasTotal = Number(scanData.total) > 0;
-
-        if (hasFiles || hasTotal) {
-          showResults();
+        if (hasTotal) {
+          await showResults();
         } else {
           document.getElementById('resultsSection').classList.add('hidden');
         }
       } catch (error) {
         console.error('Failed to load latest scan:', error);
       }
+    }
+
+    async function fetchCategoryFiles(category, page = 1, limit = 500) {
+      const cacheKey = `${category}:${page}:${limit}`;
+      if (fileCache.has(cacheKey)) {
+        return fileCache.get(cacheKey);
+      }
+      if (fileFetchPromises.has(cacheKey)) {
+        return fileFetchPromises.get(cacheKey);
+      }
+
+      const promise = authFetch(`/api/scan/files?category=${encodeURIComponent(category)}&page=${page}&limit=${limit}`)
+        .then(async (response) => {
+          if (!response.ok) return { files: [], totalFiles: 0, page, totalPages: 1 };
+          const data = await response.json();
+          fileCache.set(cacheKey, data);
+          fileFetchPromises.delete(cacheKey);
+          return data;
+        })
+        .catch((err) => {
+          console.error(`Failed to fetch files for ${category}:`, err);
+          fileFetchPromises.delete(cacheKey);
+          return { files: [], totalFiles: 0, page, totalPages: 1 };
+        });
+
+      fileFetchPromises.set(cacheKey, promise);
+      return promise;
     }
 
     function startScan(type = 'drive') {
@@ -1953,9 +1997,9 @@
         console.log('Scan complete via data merge, files:', scanData.files?.length, 'total:', scanData.total);
         updateStatus();
         if (Array.isArray(scanData.files) && scanData.files.length > 0) {
-          showResults();
+          await showResults();
         } else if (Number(scanData.total) > 0) {
-          showResults();
+          await showResults();
         }
       }
 
@@ -2347,12 +2391,14 @@
       await restoreFiles(fileIds);
     }
 
-    function showResults() {
+    async function showResults() {
       document.getElementById('resultsSection').classList.remove('hidden');
+      await loadCategoryFiles(currentTab);
+      rebuildFileLookup();
       renderFiles();
     }
 
-    function setCurrentTab(tab) {
+    async function setCurrentTab(tab) {
       currentTab = tab;
       currentPage = 1;
 
@@ -2361,6 +2407,8 @@
 
       document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
       document.querySelector(`[data-category="${tab}"]`)?.classList.add('active');
+      await loadCategoryFiles(tab);
+      rebuildFileLookup();
       renderFiles();
       updateStatus();
     }
@@ -2391,6 +2439,22 @@
         case 'trash': return scanData.trash || [];
         default: return [];
       }
+    }
+
+    async function loadCategoryFiles(category) {
+      const cached = getCategoryFiles(category);
+      if (cached.length > 0) return cached;
+
+      const totalKey = category === 'all' ? 'filesCount' : category;
+      const totalCount = scanData[totalKey] || 0;
+      if (totalCount === 0) return [];
+
+      const data = await fetchCategoryFiles(category, 1, Math.min(500, totalCount));
+      if (data.files && data.files.length > 0) {
+        scanData[category === 'all' ? 'files' : category] = data.files;
+        return data.files;
+      }
+      return [];
     }
 
     function getFilteredFiles(category = currentTab) {

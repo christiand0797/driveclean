@@ -754,8 +754,59 @@ app.get('/api/scan/latest', validateSession, (req, res) => {
   try {
     const sessionId = req.headers['x-session'];
     const scan = getLatestScan(sessionId);
-    log(`Returning scan for session ${sessionId}: total=${scan.total}, files=${scan.files?.length || 0}`);
-    res.json(scan);
+    const summary = {
+      capturedAt: scan.capturedAt,
+      scope: scan.scope,
+      total: scan.total,
+      totalSize: scan.totalSize,
+      large: scan.large?.length || 0,
+      old: scan.old?.length || 0,
+      empty: scan.empty?.length || 0,
+      duplicates: scan.duplicates?.length || 0,
+      duplicateGroups: scan.duplicateGroups?.length || 0,
+      hidden: scan.hidden?.length || 0,
+      orphan: scan.orphan?.length || 0,
+      shared: scan.shared?.length || 0,
+      ownedByOthers: scan.ownedByOthers?.length || 0,
+      public: scan.public?.length || 0,
+      temporary: scan.temporary?.length || 0,
+      emptyFolders: scan.emptyFolders?.length || 0,
+      trash: scan.trash?.length || 0,
+      extensions: scan.extensions,
+      mimeTypes: scan.mimeTypes,
+      folderSizes: scan.folderSizes,
+      gmail: scan.gmail,
+      photos: scan.photos,
+      hasFiles: Array.isArray(scan.files) && scan.files.length > 0,
+      filesCount: scan.files?.length || 0
+    };
+    log(`Returning scan summary for session ${sessionId}: total=${summary.total}, filesCount=${summary.filesCount}`);
+    res.json(summary);
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
+app.get('/api/scan/files', validateSession, (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const scan = getLatestScan(sessionId);
+    const category = String(req.query.category || 'all');
+    const page = Math.max(1, parseInt(req.query.page || 1));
+    const limit = Math.min(500, Math.max(10, parseInt(req.query.limit || 100)));
+    const files = collectCategories(scan, category);
+    const totalPages = Math.max(1, Math.ceil(files.length / limit));
+    const start = (page - 1) * limit;
+    const end = start + limit;
+    const pageFiles = files.slice(start, end);
+    res.json({
+      category,
+      page,
+      limit,
+      totalPages,
+      totalFiles: files.length,
+      files: pageFiles
+    });
   } catch (error) {
     respondWithError(res, error);
   }
