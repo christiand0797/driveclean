@@ -49,6 +49,7 @@
       color: var(--text);
       min-height: 100vh;
       overflow-x: hidden;
+      padding-bottom: 36px;
     }
 
     body::before {
@@ -1572,9 +1573,27 @@
         <div class="key-hint"><span class="key">Del</span> Delete selected</div>
         <div class="key-hint"><span class="key">E</span> Export as CSV</div>
         <div class="key-hint"><span class="key">1-9</span> Switch tabs</div>
-        <div class="key-hint"><span class="key">Esc</span> Close modal/cancel</div>
         <div class="key-hint"><span class="key">?</span> Show this help</div>
+        <div class="key-hint"><span class="key">Esc</span> Close modal/cancel</div>
       </div>
+      <button class="btn btn-secondary" onclick="closeShortcutsModal()" style="width:100%">Close</button>
+    </div>
+  </div>
+
+  <div id="statusBar" style="position:fixed;bottom:0;left:0;right:0;background:var(--bg-card);border-top:1px solid var(--border);padding:6px 20px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);z-index:50;font-family:'JetBrains Mono',monospace">
+    <div id="statusLeft" style="display:flex;gap:16px;align-items:center;overflow-x:auto">
+      <span id="statusSession">Session: --</span>
+      <span id="statusFiles">Files: 0</span>
+      <span id="statusTotal">Total: 0</span>
+      <span id="statusTab">Tab: all</span>
+      <span id="statusFiltered">Filtered: 0</span>
+    </div>
+    <div id="statusRight" style="display:flex;gap:16px;align-items:center">
+      <span id="statusScan">Scan: idle</span>
+      <span id="statusProgress"></span>
+      <button class="btn btn-sm btn-secondary" onclick="debugScanData()" style="padding:2px 8px;font-size:10px" title="Debug">Debug</button>
+    </div>
+  </div>
       <button class="btn btn-secondary" onclick="closeShortcutsModal()" style="width:100%">Close</button>
     </div>
   </div>
@@ -1622,6 +1641,7 @@
       if (currentSession) {
         showDashboard();
       }
+      updateStatus();
     }
 
     function handleKeyboard(event) {
@@ -1798,10 +1818,11 @@
           document.getElementById('scanFolderInput').value = data.scope.folderId || '';
         }
 
-        rebuildFileLookup();
-        updateStats();
+      rebuildFileLookup();
+      updateStats();
+      updateStatus();
 
-        const hasFiles = Array.isArray(scanData.files) && scanData.files.length > 0;
+      const hasFiles = Array.isArray(scanData.files) && scanData.files.length > 0;
         const hasTotal = Number(scanData.total) > 0;
 
         if (hasFiles || hasTotal) {
@@ -1853,6 +1874,8 @@
       document.getElementById('progressFill').style.width = `${msg.progress || 0}%`;
       document.getElementById('progressText').innerText = msg.error || msg.stage || 'Working...';
       document.getElementById('rateLimitIndicator').style.display = msg.stage?.includes('Rate limit') ? 'block' : 'none';
+
+      updateStatus();
 
       if (msg.progress > 0 && msg.progress < 100) {
         const statsDiv = document.getElementById('progressStats');
@@ -1921,12 +1944,14 @@
         await loadLatestScan();
         await loadStorage();
         console.log('Scan complete - loaded latest scan, files:', scanData.files?.length, 'total:', scanData.total);
+        updateStatus();
       } else if (msg.data) {
         scanData = { ...scanData, ...msg.data };
         rebuildFileLookup();
         updateStats();
         loadStorage();
         console.log('Scan complete via data merge, files:', scanData.files?.length, 'total:', scanData.total);
+        updateStatus();
         if (Array.isArray(scanData.files) && scanData.files.length > 0) {
           showResults();
         } else if (Number(scanData.total) > 0) {
@@ -2337,6 +2362,7 @@
       document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
       document.querySelector(`[data-category="${tab}"]`)?.classList.add('active');
       renderFiles();
+      updateStatus();
     }
 
     function showCategory(tab) {
@@ -2419,6 +2445,7 @@
       document.getElementById('tableView').classList.toggle('hidden', mode !== 'table');
       document.getElementById('gridView').classList.toggle('hidden', mode !== 'grid');
       renderFiles();
+      updateStatus();
     }
 
     function getThumbnailUrl(file, size = 220) {
@@ -2480,6 +2507,7 @@
 
       renderPagination(filteredFiles.length, totalPages);
       updateDeleteBtn();
+      updateStatus();
     }
 
     function renderDuplicateGroups() {
@@ -3430,42 +3458,70 @@ ${files.map((file) => `<div class="file"><div class="name">${escapeHtml(file.nam
       document.getElementById('shortcutsModal').classList.add('active');
     }
 
+    async     function updateStatus() {
+      const sessionEl = document.getElementById('statusSession');
+      const filesEl = document.getElementById('statusFiles');
+      const totalEl = document.getElementById('statusTotal');
+      const tabEl = document.getElementById('statusTab');
+      const filteredEl = document.getElementById('statusFiltered');
+      const scanEl = document.getElementById('statusScan');
+      const progressEl = document.getElementById('statusProgress');
+
+      if (sessionEl) sessionEl.innerText = `Session: ${currentSession ? currentSession.slice(0, 8) + '...' : 'none'}`;
+      if (filesEl) filesEl.innerText = `Files: ${scanData.files?.length || 0}`;
+      if (totalEl) totalEl.innerText = `Total: ${scanData.total || 0}`;
+      if (tabEl) tabEl.innerText = `Tab: ${currentTab}`;
+      if (filteredEl) filteredEl.innerText = `Filtered: ${filteredFiles?.length || 0}`;
+      if (scanEl) scanEl.innerText = `Scan: ${currentJobId ? 'running' : 'idle'}`;
+      if (progressEl) progressEl.innerText = currentJobId ? `Progress: ${document.getElementById('progressFill')?.style?.width || '0%'}` : '';
+    }
+
     async function debugScanData() {
-      console.log('=== DEBUG SCAN DATA ===');
+      console.log('=== CLIENT STATE ===');
+      console.log('currentSession:', currentSession);
       console.log('scanData keys:', Object.keys(scanData));
       console.log('scanData.total:', scanData.total);
-      console.log('scanData.files length:', scanData.files?.length);
-      console.log('scanData.capturedAt:', scanData.capturedAt);
-      console.log('scanData.scope:', scanData.scope);
-      console.log('scanData.large length:', scanData.large?.length);
-      console.log('scanData.duplicates length:', scanData.duplicates?.length);
-      console.log('scanData.trash length:', scanData.trash?.length);
-      console.log('currentSession:', currentSession);
+      console.log('scanData.files:', scanData.files);
+      console.log('scanData.files?.length:', scanData.files?.length);
       console.log('currentTab:', currentTab);
-      console.log('filteredFiles length:', filteredFiles?.length);
-      console.log('visibleFiles length:', visibleFiles?.length);
-      console.log('fileLookup size:', fileLookup.size);
+      console.log('filteredFiles?.length:', filteredFiles?.length);
 
       try {
-        const response = await authFetch('/api/scan/debug');
-        const debugData = await response.json();
-        console.log('Server debug:', debugData);
+        console.log('=== FETCHING /api/scan/latest ===');
+        const response = await authFetch('/api/scan/latest');
+        console.log('Response status:', response.status);
+        const data = await response.json();
+        console.log('Response data keys:', Object.keys(data));
+        console.log('Response data.total:', data.total);
+        console.log('Response data.files:', data.files);
+        console.log('Response data.files?.length:', data.files?.length);
+        console.log('Response data.capturedAt:', data.capturedAt);
+
+        try {
+          console.log('=== FETCHING /api/scan/debug ===');
+          const debugResp = await authFetch('/api/scan/debug');
+          const debugData = await debugResp.json();
+          console.log('Server debug:', debugData);
+        } catch (e) {
+          console.error('Debug endpoint failed:', e);
+        }
+
+        const info = [
+          `Session: ${currentSession || 'NONE'}`,
+          `Client total: ${scanData.total || 0}`,
+          `Client files: ${scanData.files?.length || 0}`,
+          `Server total: ${data.total || 0}`,
+          `Server files: ${data.files?.length || 0}`,
+          `Server captured: ${data.capturedAt || 'never'}`,
+          `Current tab: ${currentTab}`,
+          `Filtered: ${filteredFiles?.length || 0}`
+        ].join('\n');
+
+        alert(`Debug:\n\n${info}\n\nOpen console (F12) for full data`);
       } catch (error) {
-        console.error('Debug endpoint failed:', error);
+        console.error('Debug failed:', error);
+        alert(`Debug failed: ${error.message}`);
       }
-
-      const info = [
-        `Total: ${scanData.total || 0}`,
-        `Files array: ${scanData.files?.length || 0}`,
-        `Captured: ${scanData.capturedAt || 'never'}`,
-        `Session: ${currentSession ? 'yes' : 'no'}`,
-        `Tab: ${currentTab}`,
-        `Filtered: ${filteredFiles?.length || 0}`,
-        `Visible: ${visibleFiles?.length || 0}`,
-        `Lookup: ${fileLookup.size}`
-      ].join('\n');
-
-      alert(`Debug Info:\n\n${info}\n\nCheck browser console for full details`);
     }
 
     function closeShortcutsModal() {
