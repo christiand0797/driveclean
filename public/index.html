@@ -503,13 +503,141 @@
 
     .file-checkbox { width: 40px; }
     .file-icon-col { width: 50px; }
+    .file-thumbnail-col { width: 60px; }
     .file-size-col { width: 100px; text-align: right; }
     .file-date-col { width: 120px; }
-    .file-actions-col { width: 120px; text-align: right; }
+    .file-actions-col { width: 140px; text-align: right; }
 
     .file-icon {
       font-size: 1.4rem;
       margin-right: 8px;
+    }
+
+    .file-thumbnail {
+      width: 48px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+    }
+
+    .file-thumbnail-placeholder {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-elevated);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 1.5rem;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px;
+    }
+
+    .view-toggle-btn {
+      padding: 6px 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .view-toggle-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+
+    .grid-view {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+      padding: 10px 0;
+    }
+
+    .grid-item {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .grid-item:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(157,78,221,0.2);
+    }
+
+    .grid-item.selected {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary);
+    }
+
+    .grid-item-thumbnail {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      background: var(--bg-dark);
+    }
+
+    .grid-item-icon {
+      width: 100%;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+      background: var(--bg-dark);
+    }
+
+    .grid-item-info {
+      padding: 10px;
+    }
+
+    .grid-item-name {
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+    }
+
+    .grid-item-size {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 4px;
+    }
+
+    .grid-item-checkbox {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      width: 18px;
+      height: 18px;
+      accent-color: var(--primary);
+      cursor: pointer;
+      z-index: 1;
+    }
+
+    .grid-item-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
     }
 
     .file-name {
@@ -1268,11 +1396,11 @@
           </div>
 
           <div id="fileListContainer">
-            <table class="file-table">
+            <table class="file-table" id="tableView">
               <thead>
                 <tr>
                   <th class="file-checkbox"><input type="checkbox" onchange="toggleAll(this)"></th>
-                  <th class="file-icon-col"></th>
+                  <th class="file-thumbnail-col">Preview</th>
                   <th>Name</th>
                   <th class="file-size-col">Size</th>
                   <th class="file-date-col">Modified</th>
@@ -1281,11 +1409,20 @@
               </thead>
               <tbody id="fileTableBody"></tbody>
             </table>
+            <div id="gridView" class="grid-view hidden"></div>
           </div>
 
           <div id="paginationBar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px">
             <div id="paginationSummary" style="color:var(--text-dim);font-size:13px">No files loaded</div>
             <div style="display:flex;gap:8px;align-items:center">
+              <div class="view-toggle">
+                <button class="view-toggle-btn active" id="viewTableBtn" onclick="setView('table')" title="Table view">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                </button>
+                <button class="view-toggle-btn" id="viewGridBtn" onclick="setView('grid')" title="Grid view">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                </button>
+              </div>
               <button class="btn btn-secondary btn-sm" onclick="changePage(-1)" id="prevPageBtn">Prev</button>
               <span id="pageLabel" style="color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-size:12px">Page 1</span>
               <button class="btn btn-secondary btn-sm" onclick="changePage(1)" id="nextPageBtn">Next</button>
@@ -1402,6 +1539,11 @@
 
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').catch(() => {});
+      }
+
+      if (currentView === 'grid') {
+        document.getElementById('viewTableBtn').classList.remove('active');
+        document.getElementById('viewGridBtn').classList.add('active');
       }
 
       if (currentSession) {
@@ -2049,8 +2191,31 @@
       return files;
     }
 
+    let currentView = localStorage.getItem('viewMode') || 'table';
+
+    function setView(mode) {
+      currentView = mode;
+      localStorage.setItem('viewMode', mode);
+      document.getElementById('viewTableBtn').classList.toggle('active', mode === 'table');
+      document.getElementById('viewGridBtn').classList.toggle('active', mode === 'grid');
+      document.getElementById('tableView').classList.toggle('hidden', mode !== 'table');
+      document.getElementById('gridView').classList.toggle('hidden', mode !== 'grid');
+      renderFiles();
+    }
+
+    function getThumbnailUrl(file, size = 220) {
+      if (file.thumbnailLink) {
+        return file.thumbnailLink.replace(/=s\d+/, `=s${size}`);
+      }
+      if (file.mimeType && (file.mimeType.startsWith('image/') || file.mimeType.startsWith('video/'))) {
+        return `https://drive.google.com/thumbnail?id=${file.id}&sz=${size}`;
+      }
+      return null;
+    }
+
     function renderFiles() {
       const tbody = document.getElementById('fileTableBody');
+      const gridContainer = document.getElementById('gridView');
       const emptyState = document.getElementById('emptyState');
 
       filteredFiles = getFilteredFiles();
@@ -2062,19 +2227,38 @@
       visibleFiles = filteredFiles.slice(start, end);
 
       tbody.innerHTML = '';
+      gridContainer.innerHTML = '';
 
       if (filteredFiles.length === 0) {
         tbody.classList.add('hidden');
+        gridContainer.classList.add('hidden');
         emptyState.classList.remove('hidden');
         renderPagination(0, totalPages);
         updateDeleteBtn();
         return;
       }
 
-      tbody.classList.remove('hidden');
       emptyState.classList.add('hidden');
 
-      visibleFiles.forEach((file) => {
+      if (currentView === 'table') {
+        tbody.classList.remove('hidden');
+        gridContainer.classList.add('hidden');
+        renderTableView(visibleFiles);
+      } else {
+        tbody.classList.add('hidden');
+        gridContainer.classList.remove('hidden');
+        renderGridView(visibleFiles);
+      }
+
+      renderPagination(filteredFiles.length, totalPages);
+      updateDeleteBtn();
+    }
+
+    function renderTableView(files) {
+      const tbody = document.getElementById('fileTableBody');
+      tbody.innerHTML = '';
+
+      files.forEach((file) => {
         const tr = document.createElement('tr');
         const sizeValue = Number(file.totalSize || file.size || 0);
         const duplicateBadge = file.duplicateCount ? `<span class="badge badge-warning">${file.duplicateCount} copies</span>` : '';
@@ -2086,9 +2270,17 @@
           currentTab === 'temporary' ? `<span class="badge badge-danger">Temp</span>` : ''
         ].filter(Boolean).join(' ');
 
+        const thumbnailUrl = getThumbnailUrl(file, 96);
+        const hasThumbnail = thumbnailUrl && file.mimeType !== FOLDER_MIME;
+
         tr.innerHTML = `
           <td class="file-checkbox"><input type="checkbox" data-file-id="${escapeHtml(file.id)}" ${selectedFiles.has(file.id) ? 'checked' : ''}></td>
-          <td class="file-icon-col"><span class="file-icon">${getIcon(file.mimeType)}</span></td>
+          <td class="file-thumbnail-col">
+            ${hasThumbnail
+              ? `<img class="file-thumbnail" src="${escapeHtml(thumbnailUrl)}" alt="" loading="lazy" onerror="this.outerHTML='<span class=file-thumbnail-placeholder>${getIcon(file.mimeType)}</span>'">`
+              : `<span class="file-thumbnail-placeholder">${getIcon(file.mimeType)}</span>`
+            }
+          </td>
           <td>
             <div class="file-name" title="${escapeHtml(file.name || 'Untitled')}">${escapeHtml(file.name || 'Untitled')}</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${duplicateBadge}${flags}</div>
@@ -2114,9 +2306,48 @@
 
         tbody.appendChild(tr);
       });
+    }
 
-      renderPagination(filteredFiles.length, totalPages);
-      updateDeleteBtn();
+    function renderGridView(files) {
+      const gridContainer = document.getElementById('gridView');
+      gridContainer.innerHTML = '';
+
+      files.forEach((file) => {
+        const sizeValue = Number(file.totalSize || file.size || 0);
+        const thumbnailUrl = getThumbnailUrl(file, 320);
+        const hasThumbnail = thumbnailUrl && file.mimeType !== FOLDER_MIME;
+        const isSelected = selectedFiles.has(file.id);
+
+        const div = document.createElement('div');
+        div.className = `grid-item${isSelected ? ' selected' : ''}`;
+
+        div.innerHTML = `
+          <input type="checkbox" class="grid-item-checkbox" data-file-id="${escapeHtml(file.id)}" ${isSelected ? 'checked' : ''}>
+          ${hasThumbnail
+            ? `<img class="grid-item-thumbnail" src="${escapeHtml(thumbnailUrl)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=grid-item-icon>${getIcon(file.mimeType)}</div>'">`
+            : `<div class="grid-item-icon">${getIcon(file.mimeType)}</div>`
+          }
+          ${file.public ? '<span class="grid-item-badge"><span class="badge badge-danger" style="font-size:9px">Public</span></span>' : ''}
+          <div class="grid-item-info">
+            <div class="grid-item-name" title="${escapeHtml(file.name || 'Untitled')}">${escapeHtml(file.name || 'Untitled')}</div>
+            <div class="grid-item-size">${formatBytes(sizeValue)}</div>
+          </div>
+        `;
+
+        div.querySelector('[data-file-id]').addEventListener('change', (event) => {
+          event.stopPropagation();
+          toggleSelect(file.id, event.target.checked);
+          div.classList.toggle('selected', event.target.checked);
+        });
+
+        div.addEventListener('click', (event) => {
+          if (event.target.type !== 'checkbox') {
+            previewById(file.id);
+          }
+        });
+
+        gridContainer.appendChild(div);
+      });
     }
 
     function renderPagination(totalCount, totalPages) {
@@ -2473,36 +2704,82 @@ ${files.map((file) => `<div class="file"><div class="name">${escapeHtml(file.nam
       document.getElementById('previewTitle').innerText = file.name || 'File Preview';
 
       const mime = file.mimeType || '';
-      let heroIcon = getIcon(mime);
-      if (mime === FOLDER_MIME) heroIcon = '🗂️';
+      const thumbnailUrl = getThumbnailUrl(file, 640);
+      const hasThumbnail = thumbnailUrl && mime !== FOLDER_MIME;
 
-      let content = `
-        <div style="text-align:center;padding:20px;background:var(--bg-elevated);border-radius:8px">
-          <span style="font-size:4rem">${heroIcon}</span>
-        </div>
+      let heroSection;
+      if (hasThumbnail) {
+        heroSection = `<img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(file.name)}" style="width:100%;max-height:400px;object-fit:contain;background:var(--bg-dark);border-radius:8px">`;
+      } else if (mime.startsWith('video/') || file.videoMedia) {
+        const duration = file.videoMedia?.durationMillis ? formatDuration(file.videoMedia.durationMillis) : '';
+        const resolution = file.videoMedia ? `${file.videoMedia.width}x${file.videoMedia.height}` : '';
+        heroSection = `
+          <div style="text-align:center;padding:30px;background:var(--bg-dark);border-radius:8px">
+            <span style="font-size:4rem">🎬</span>
+            ${resolution ? `<div style="color:var(--text-dim);font-size:12px;margin-top:8px;font-family:'JetBrains Mono',monospace">${resolution}${duration ? ' • ' + duration : ''}</div>` : ''}
+          </div>
+        `;
+      } else if (mime.startsWith('image/') || file.imageMedia) {
+        const resolution = file.imageMedia ? `${file.imageMedia.width}x${file.imageMedia.height}` : '';
+        heroSection = `
+          <div style="text-align:center;padding:30px;background:var(--bg-dark);border-radius:8px">
+            <span style="font-size:4rem">🖼️</span>
+            ${resolution ? `<div style="color:var(--text-dim);font-size:12px;margin-top:8px;font-family:'JetBrains Mono',monospace">${resolution}</div>` : ''}
+          </div>
+        `;
+      } else if (mime === FOLDER_MIME) {
+        heroSection = `<div style="text-align:center;padding:30px;background:var(--bg-dark);border-radius:8px"><span style="font-size:4rem">🗂️</span></div>`;
+      } else {
+        heroSection = `<div style="text-align:center;padding:30px;background:var(--bg-dark);border-radius:8px"><span style="font-size:4rem">${getIcon(mime)}</span></div>`;
+      }
+
+      let detailsHtml = `
         <div style="margin-top:20px">
           <div style="display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid var(--border)">
             <span style="color:var(--text-dim)">Size</span>
-            <span style="color:var(--secondary)">${formatBytes(file.totalSize || file.size || 0)}</span>
+            <span style="color:var(--secondary);font-family:'JetBrains Mono',monospace">${formatBytes(file.totalSize || file.size || 0)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid var(--border)">
             <span style="color:var(--text-dim)">Type</span>
-            <span style="color:var(--cyan)">${escapeHtml(mime || 'Unknown')}</span>
+            <span style="color:var(--cyan);font-size:12px;word-break:break-all">${escapeHtml(mime || 'Unknown')}</span>
           </div>
           <div style="display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid var(--border)">
             <span style="color:var(--text-dim)">Modified</span>
             <span>${file.modifiedTime ? new Date(file.modifiedTime).toLocaleString() : 'Unknown'}</span>
           </div>
+          <div style="display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid var(--border)">
+            <span style="color:var(--text-dim)">ID</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;word-break:break-all">${escapeHtml(file.id)}</span>
+          </div>
         </div>
       `;
 
       if (file.duplicateCount) {
-        content += `<p style="margin-top:16px;color:var(--warning)">Duplicate group: ${file.duplicateCount} matching files</p>`;
+        detailsHtml += `<p style="margin-top:16px;color:var(--warning)">Duplicate group: ${file.duplicateCount} matching files, ${formatBytes(file.wastedBytes || 0)} wasted</p>`;
       }
 
-      document.getElementById('previewContent').innerHTML = content;
+      if (file.public) {
+        detailsHtml += `<p style="margin-top:12px;color:var(--danger)">Publicly accessible - anyone with the link can view</p>`;
+      }
+
+      if (file.ownedByMe === false) {
+        detailsHtml += `<p style="margin-top:12px;color:var(--warning)">Owned by another user</p>`;
+      }
+
+      document.getElementById('previewContent').innerHTML = heroSection + detailsHtml;
       document.getElementById('previewLink').href = file.webViewLink || buildDriveLink(file);
       modal.classList.add('active');
+    }
+
+    function formatDuration(millis) {
+      const totalSeconds = Math.floor(millis / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
     }
 
     function closePreviewModal() {

@@ -322,6 +322,18 @@ function normalizeDriveFile(file) {
       }))
     : [];
 
+  const imageMedia = file.imageMediaMetadata ? {
+    width: Number(file.imageMediaMetadata.width) || 0,
+    height: Number(file.imageMediaMetadata.height) || 0,
+    rotation: Number(file.imageMediaMetadata.rotation) || 0
+  } : null;
+
+  const videoMedia = file.videoMediaMetadata ? {
+    width: Number(file.videoMediaMetadata.width) || 0,
+    height: Number(file.videoMediaMetadata.height) || 0,
+    durationMillis: Number(file.videoMediaMetadata.durationMillis) || 0
+  } : null;
+
   return {
     id: file.id,
     name: file.name || 'Untitled',
@@ -334,7 +346,11 @@ function normalizeDriveFile(file) {
     shared: Boolean(file.shared) || permissions.length > 1,
     public: permissions.some((permission) => permission.type === 'anyone' || permission.type === 'domain'),
     permissions,
-    webViewLink: buildWebLink(file.id, file.mimeType, file.webViewLink)
+    webViewLink: buildWebLink(file.id, file.mimeType, file.webViewLink),
+    thumbnailLink: file.thumbnailLink || null,
+    iconLink: file.iconLink || null,
+    imageMedia,
+    videoMedia
   };
 }
 
@@ -1230,10 +1246,47 @@ wss.on('connection', (ws) => {
           finishJob(data.jobId);
         }
       }
-    } catch (error) {
-      log(`WS Error: ${error.message}`, 'error');
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
+app.get('/api/file/preview', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const fileId = req.query.id;
+
+    if (!fileId) {
+      return res.status(400).json({ error: 'File ID required' });
     }
-  });
+
+    const oauth = await getAuthClient(sessionId);
+    const drive = google.drive({ version: 'v3', auth: oauth });
+
+    const fileMeta = await retryRequest(() =>
+      drive.files.get({
+        fileId,
+        supportsAllDrives: true,
+        fields: 'id,name,mimeType,thumbnailLink,iconLink,imageMediaMetadata,videoMediaMetadata,webViewLink,size'
+      })
+    );
+
+    const file = fileMeta.data;
+    res.json({
+      id: file.id,
+      name: file.name,
+      mimeType: file.mimeType,
+      thumbnailLink: file.thumbnailLink,
+      iconLink: file.iconLink,
+      imageMedia: file.imageMediaMetadata,
+      videoMedia: file.videoMediaMetadata,
+      webViewLink: file.webViewLink,
+      size: file.size
+    });
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
 });
 
 async function runPhotosScan(jobId, ws) {
@@ -1363,9 +1416,9 @@ async function runDriveScan(jobId, ws) {
     const drive = google.drive({ version: 'v3', auth: oauth });
     const scope = await resolveDriveScanScope(drive, job.scope);
     const driveFields =
-      'nextPageToken,files(id,name,mimeType,size,quotaBytesUsed,modifiedTime,md5Checksum,parents,permissions(type,role,emailAddress,domain),webViewLink,ownedByMe,shared)';
+      'nextPageToken,files(id,name,mimeType,size,quotaBytesUsed,modifiedTime,md5Checksum,parents,permissions(type,role,emailAddress,domain),webViewLink,ownedByMe,shared,thumbnailLink,iconLink,imageMediaMetadata(width,height,rotation),videoMediaMetadata(width,height,durationMillis))';
     const trashFields =
-      'nextPageToken,files(id,name,mimeType,size,quotaBytesUsed,modifiedTime,parents,permissions(type,role,emailAddress,domain),webViewLink,ownedByMe,shared)';
+      'nextPageToken,files(id,name,mimeType,size,quotaBytesUsed,modifiedTime,parents,permissions(type,role,emailAddress,domain),webViewLink,ownedByMe,shared,thumbnailLink,iconLink)';
 
     const activeFiles = [];
     const trashFiles = [];
