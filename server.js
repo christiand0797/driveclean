@@ -761,6 +761,30 @@ app.get('/api/scan/latest', validateSession, (req, res) => {
   }
 });
 
+app.get('/api/scan/debug', validateSession, (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const scan = latestScans.get(sessionId);
+    if (!scan) {
+      return res.json({ error: 'No scan data', sessionExists: sessions.has(sessionId) });
+    }
+    res.json({
+      sessionExists: sessions.has(sessionId),
+      hasScan: true,
+      total: scan.total,
+      filesLength: scan.files?.length || 0,
+      capturedAt: scan.capturedAt,
+      scope: scan.scope,
+      keys: Object.keys(scan),
+      largeLength: scan.large?.length || 0,
+      duplicatesLength: scan.duplicates?.length || 0,
+      trashLength: scan.trash?.length || 0
+    });
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
 app.get('/api/export/csv', validateSession, async (req, res) => {
   try {
     const sessionId = req.headers['x-session'];

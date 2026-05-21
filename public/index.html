@@ -1201,6 +1201,8 @@
           </div>
           <div style="margin-top:10px;font-size:11px;color:var(--text-dim)">
             <span id="lastScanTime">No scan yet</span>
+            <button class="btn btn-sm btn-secondary" onclick="loadLatestScan()" style="margin-left:10px" title="Refresh scan data"> Refresh</button>
+            <button class="btn btn-sm btn-secondary" onclick="debugScanData()" style="margin-left:5px" title="View scan data"> Debug</button>
           </div>
         </div>
       </div>
@@ -3426,6 +3428,44 @@ ${files.map((file) => `<div class="file"><div class="name">${escapeHtml(file.nam
 
     function openShortcutsModal() {
       document.getElementById('shortcutsModal').classList.add('active');
+    }
+
+    async function debugScanData() {
+      console.log('=== DEBUG SCAN DATA ===');
+      console.log('scanData keys:', Object.keys(scanData));
+      console.log('scanData.total:', scanData.total);
+      console.log('scanData.files length:', scanData.files?.length);
+      console.log('scanData.capturedAt:', scanData.capturedAt);
+      console.log('scanData.scope:', scanData.scope);
+      console.log('scanData.large length:', scanData.large?.length);
+      console.log('scanData.duplicates length:', scanData.duplicates?.length);
+      console.log('scanData.trash length:', scanData.trash?.length);
+      console.log('currentSession:', currentSession);
+      console.log('currentTab:', currentTab);
+      console.log('filteredFiles length:', filteredFiles?.length);
+      console.log('visibleFiles length:', visibleFiles?.length);
+      console.log('fileLookup size:', fileLookup.size);
+
+      try {
+        const response = await authFetch('/api/scan/debug');
+        const debugData = await response.json();
+        console.log('Server debug:', debugData);
+      } catch (error) {
+        console.error('Debug endpoint failed:', error);
+      }
+
+      const info = [
+        `Total: ${scanData.total || 0}`,
+        `Files array: ${scanData.files?.length || 0}`,
+        `Captured: ${scanData.capturedAt || 'never'}`,
+        `Session: ${currentSession ? 'yes' : 'no'}`,
+        `Tab: ${currentTab}`,
+        `Filtered: ${filteredFiles?.length || 0}`,
+        `Visible: ${visibleFiles?.length || 0}`,
+        `Lookup: ${fileLookup.size}`
+      ].join('\n');
+
+      alert(`Debug Info:\n\n${info}\n\nCheck browser console for full details`);
     }
 
     function closeShortcutsModal() {
