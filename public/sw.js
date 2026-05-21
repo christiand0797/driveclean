@@ -1,4 +1,4 @@
-const CACHE_NAME = 'driveclean-v4';
+const CACHE_NAME = 'driveclean-v5';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
