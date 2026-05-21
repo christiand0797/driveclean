@@ -1205,6 +1205,11 @@
         </div>
       </div>
 
+      <div class="card hidden" id="savingsDashboard">
+        <h3 style="margin-bottom:15px;color:var(--secondary)">💰 Storage Savings Dashboard</h3>
+        <div id="savingsContent"></div>
+      </div>
+
       <div class="card" id="statsBreakdown">
         <h3 style="margin-bottom:15px;color:var(--cyan)">📈 File Type Breakdown</h3>
         <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
@@ -2007,7 +2012,102 @@
         ? new Date(datedFiles[datedFiles.length - 1].modifiedTime).toLocaleDateString()
         : '--';
 
+      updateSavingsDashboard();
       updateScanStatus();
+    }
+
+    function updateSavingsDashboard() {
+      const dashboard = document.getElementById('savingsDashboard');
+      const content = document.getElementById('savingsContent');
+      const data = scanData;
+
+      if (!data.total || data.total === 0) {
+        dashboard.classList.add('hidden');
+        return;
+      }
+
+      dashboard.classList.remove('hidden');
+
+      const dupWasted = (data.duplicates || []).reduce((sum, f) => sum + Number(f.wastedBytes || 0), 0);
+      const tempSize = (data.temporary || []).reduce((sum, f) => sum + Number(f.size || 0), 0);
+      const trashSize = (data.trash || []).reduce((sum, f) => sum + Number(f.size || 0), 0);
+      const largeSize = (data.large || []).reduce((sum, f) => sum + Number(f.size || 0), 0);
+      const totalSavings = dupWasted + tempSize + trashSize;
+
+      const actions = [
+        {
+          icon: '📑',
+          title: 'Remove Duplicates',
+          description: `${data.duplicateGroups?.length || 0} groups with ${formatBytes(dupWasted)} wasted`,
+          count: (data.duplicates || []).length,
+          size: dupWasted,
+          tab: 'duplicates',
+          color: 'var(--warning)'
+        },
+        {
+          icon: '🗑️',
+          title: 'Empty Trash',
+          description: `${data.trash?.length || 0} files taking ${formatBytes(trashSize)}`,
+          count: data.trash?.length || 0,
+          size: trashSize,
+          tab: 'trash',
+          color: 'var(--danger)'
+        },
+        {
+          icon: '🧹',
+          title: 'Clean Temporary Files',
+          description: `${data.temporary?.length || 0} files taking ${formatBytes(tempSize)}`,
+          count: data.temporary?.length || 0,
+          size: tempSize,
+          tab: 'temporary',
+          color: 'var(--cyan)'
+        },
+        {
+          icon: '🐘',
+          title: 'Review Large Files',
+          description: `${data.large?.length || 0} files taking ${formatBytes(largeSize)}`,
+          count: data.large?.length || 0,
+          size: largeSize,
+          tab: 'large',
+          color: 'var(--primary)'
+        }
+      ].filter((a) => a.count > 0);
+
+      let html = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:2rem;font-weight:700;color:var(--secondary);font-family:'JetBrains Mono',monospace">${formatBytes(totalSavings)}</div>
+            <div style="font-size:13px;color:var(--text-dim)">Potential storage recovery</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="quickClean()" style="background:var(--gradient-lime);color:var(--bg-dark)">Quick Clean</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">
+      `;
+
+      actions.forEach((action) => {
+        const percent = data.totalSize > 0 ? ((action.size / data.totalSize) * 100).toFixed(1) : 0;
+        html += `
+          <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:16px;cursor:pointer;transition:all 0.2s" onclick="showCategory('${action.tab}')">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+              <span style="font-size:1.5rem">${action.icon}</span>
+              <div style="flex:1">
+                <div style="font-weight:600;font-size:14px">${action.title}</div>
+                <div style="font-size:12px;color:var(--text-dim)">${action.description}</div>
+              </div>
+            </div>
+            <div class="analytics-bar">
+              <div class="analytics-bar-fill" style="width:${Math.min(percent, 100)}%;background:${action.color}"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text-dim)">
+              <span>${action.count} files</span>
+              <span>${percent}% of total</span>
+            </div>
+          </div>
+        `;
+      });
+
+      html += '</div>';
+      content.innerHTML = html;
     }
 
     function updateScanStatus() {
