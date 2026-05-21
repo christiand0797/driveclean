@@ -1379,6 +1379,20 @@
             </div>
           </div>
           <p id="progressText" style="color:var(--text-dim)">Preparing scanner...</p>
+          <div id="progressStats" style="display:none;margin-top:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:500px;margin-left:auto;margin-right:auto">
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="progressFilesFound">0</div>
+              <div class="quick-stat-label">Files Found</div>
+            </div>
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="progressSizeFound">0 MB</div>
+              <div class="quick-stat-label">Size Scanned</div>
+            </div>
+            <div class="quick-stat">
+              <div class="quick-stat-value" id="progressETA">--</div>
+              <div class="quick-stat-label">ETA</div>
+            </div>
+          </div>
           <div id="rateLimitIndicator" style="display:none;margin-top:10px;font-size:12px;color:var(--warning)">
             ⚠️ Rate limited - slowing down
           </div>
@@ -1827,15 +1841,53 @@
       toggleScanUI(false);
     }
 
+    let scanStartTime = null;
+
     async function updateProgress(msg) {
       document.getElementById('progressStage').innerText = msg.stage || 'Working...';
       document.getElementById('progressFill').style.width = `${msg.progress || 0}%`;
       document.getElementById('progressText').innerText = msg.error || msg.stage || 'Working...';
       document.getElementById('rateLimitIndicator').style.display = msg.stage?.includes('Rate limit') ? 'block' : 'none';
 
+      if (msg.progress > 0 && msg.progress < 100) {
+        const statsDiv = document.getElementById('progressStats');
+        if (statsDiv) statsDiv.style.display = 'grid';
+
+        if (!scanStartTime) {
+          scanStartTime = Date.now();
+        }
+
+        const elapsed = (Date.now() - scanStartTime) / 1000;
+        const progress = msg.progress / 100;
+        const estimatedTotal = elapsed / progress;
+        const remaining = estimatedTotal - elapsed;
+
+        if (remaining > 0 && remaining < 3600) {
+          const minutes = Math.floor(remaining / 60);
+          const seconds = Math.floor(remaining % 60);
+          const etaEl = document.getElementById('progressETA');
+          if (etaEl) etaEl.innerText = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+        }
+
+        const stage = msg.stage || '';
+        const fileMatch = stage.match(/Scanned?\s+([\d,]+)/i);
+        if (fileMatch) {
+          const filesFound = parseInt(fileMatch[1].replace(/,/g, ''));
+          const filesEl = document.getElementById('progressFilesFound');
+          if (filesEl) filesEl.innerText = filesFound.toLocaleString();
+        }
+
+        const sizeMatch = stage.match(/([\d.]+)\s*(MB|GB|TB)/i);
+        if (sizeMatch) {
+          const sizeEl = document.getElementById('progressSizeFound');
+          if (sizeEl) sizeEl.innerText = `${sizeMatch[1]} ${sizeMatch[2]}`;
+        }
+      }
+
       if (msg.stage === 'Error') {
         currentJobId = null;
         toggleScanUI(false);
+        scanStartTime = null;
         showToast(`Scan failed: ${msg.error}`, 'error', 8000);
         return;
       }
@@ -1843,6 +1895,7 @@
       if (msg.stage === 'Canceled') {
         currentJobId = null;
         toggleScanUI(false);
+        scanStartTime = null;
         showToast('Scan canceled', 'info');
         return;
       }
@@ -1850,6 +1903,10 @@
       if (msg.stage !== 'Complete') {
         return;
       }
+
+      scanStartTime = null;
+      const statsDiv = document.getElementById('progressStats');
+      if (statsDiv) statsDiv.style.display = 'none';
 
       playNotificationSound();
       currentJobId = null;
