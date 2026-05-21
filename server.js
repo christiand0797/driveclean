@@ -483,6 +483,7 @@ function mergeLatestScan(sessionId, patch) {
   }
   latestScans.set(sessionId, merged);
   saveScans();
+  log(`Merged scan for session ${sessionId}: total=${merged.total}, files=${merged.files?.length || 0}`);
   return merged;
 }
 
@@ -753,6 +754,7 @@ app.get('/api/scan/latest', validateSession, (req, res) => {
   try {
     const sessionId = req.headers['x-session'];
     const scan = getLatestScan(sessionId);
+    log(`Returning scan for session ${sessionId}: total=${scan.total}, files=${scan.files?.length || 0}`);
     res.json(scan);
   } catch (error) {
     respondWithError(res, error);

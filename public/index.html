@@ -1791,21 +1791,24 @@
 
         const data = await response.json();
         scanData = data;
+
         if (!document.getElementById('scanFolderInput').value && data.scope?.mode === 'folder') {
           document.getElementById('scanFolderInput').value = data.scope.folderId || '';
         }
+
         rebuildFileLookup();
         updateStats();
 
-        if (scanData.files?.length) {
-          showResults();
-        } else if (scanData.total > 0) {
+        const hasFiles = Array.isArray(scanData.files) && scanData.files.length > 0;
+        const hasTotal = Number(scanData.total) > 0;
+
+        if (hasFiles || hasTotal) {
           showResults();
         } else {
           document.getElementById('resultsSection').classList.add('hidden');
         }
       } catch (error) {
-        console.error(error);
+        console.error('Failed to load latest scan:', error);
       }
     }
 
@@ -1915,12 +1918,16 @@
       if (msg.data?.__triggerFetch) {
         await loadLatestScan();
         await loadStorage();
+        console.log('Scan complete - loaded latest scan, files:', scanData.files?.length, 'total:', scanData.total);
       } else if (msg.data) {
         scanData = { ...scanData, ...msg.data };
         rebuildFileLookup();
         updateStats();
         loadStorage();
-        if (scanData.files?.length) {
+        console.log('Scan complete via data merge, files:', scanData.files?.length, 'total:', scanData.total);
+        if (Array.isArray(scanData.files) && scanData.files.length > 0) {
+          showResults();
+        } else if (Number(scanData.total) > 0) {
           showResults();
         }
       }
