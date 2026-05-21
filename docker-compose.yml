@@ -1,0 +1,32 @@
+services:
+  driveclean:
+    build: .
+    container_name: driveclean
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - REDIRECT_URI=${REDIRECT_URI:-http://localhost:3000/api/auth/callback}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - PORT=3000
+      - SCAN_LIMIT=${SCAN_LIMIT:-50000}
+    volumes:
+      - driveclean-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  driveclean-data:
+    driver: local

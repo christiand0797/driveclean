@@ -123,3 +123,98 @@ test('auth url endpoint returns configured callback host', async (t) => {
   assert.match(url.toString(), /oauth/i);
   assert.equal(url.searchParams.get('redirect_uri'), `http://127.0.0.1:${port}/api/auth/callback`);
 });
+
+test('health endpoint returns session and scan counts', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/health`);
+  const health = await response.json();
+
+  assert.equal(health.status, 'ok');
+  assert.equal(typeof health.sessions, 'number');
+  assert.equal(typeof health.scans, 'number');
+});
+
+test('missing env vars produce warnings on startup', async (t) => {
+  const { port, logsRef } = await startServer(t);
+
+  const logs = logsRef();
+  assert.match(logs, /DriveClean running/i);
+});
+
+test('security headers are present on all responses', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/health`);
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(response.headers.get('x-frame-options'), 'DENY');
+  assert.equal(response.headers.get('x-xss-protection'), '1; mode=block');
+  assert.equal(response.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
+});
+
+test('scan history endpoint returns empty array for new session', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/scan/history`, {
+    headers: { 'x-session': 'nonexistent-session' }
+  });
+
+  assert.equal(response.status, 401);
+});
+
+test('file operations reject invalid input', async (t) => {
+  const { port } = await startServer(t);
+
+  const deleteResponse = await fetch(`http://127.0.0.1:${port}/api/files/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-session': 'bad-session' },
+    body: JSON.stringify({ fileIds: [] })
+  });
+  assert.equal(deleteResponse.status, 401);
+
+  const renameResponse = await fetch(`http://127.0.0.1:${port}/api/files/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-session': 'bad-session' },
+    body: JSON.stringify({ fileId: 'abc', newName: '' })
+  });
+  assert.equal(renameResponse.status, 401);
+});
+
+test('gmail clean rejects invalid category', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/gmail/clean`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-session': 'bad-session' },
+    body: JSON.stringify({ category: 'invalid', olderThanDays: 365 })
+  });
+  assert.equal(response.status, 401);
+});
+
+test('trash empty endpoint requires valid session', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/trash/empty`, {
+    method: 'POST',
+    headers: { 'x-session': 'bad-session' }
+  });
+  assert.equal(response.status, 401);
+});
+
+test('storage endpoint requires valid session', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/storage`, {
+    headers: { 'x-session': 'bad-session' }
+  });
+  assert.equal(response.status, 401);
+});
+
+test('scan latest endpoint returns 404 when no scan data', async (t) => {
+  const { port } = await startServer(t);
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/scan/latest`, {
+    headers: { 'x-session': 'bad-session' }
+  });
+  assert.equal(response.status, 401);
+});

@@ -6,7 +6,9 @@ node_modules/
 .yarn/
 sessions.json
 scans.json
+scan_history.json
 *.swp
 *.swo
 .vscode/
 .idea/
+coverage/

@@ -619,6 +619,157 @@
 
     .modal-overlay.active .modal { transform: scale(1); }
 
+    .toast-container {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 20px;
+      min-width: 280px;
+      max-width: 400px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+      animation: toastIn 0.3s ease-out;
+      pointer-events: all;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toast.toast-out {
+      animation: toastOut 0.3s ease-in forwards;
+    }
+
+    .toast-success { border-left: 4px solid var(--secondary); }
+    .toast-error { border-left: 4px solid var(--danger); }
+    .toast-warning { border-left: 4px solid var(--warning); }
+    .toast-info { border-left: 4px solid var(--cyan); }
+
+    .toast-icon { font-size: 1.2rem; }
+    .toast-message { flex: 1; font-size: 14px; color: var(--text); }
+    .toast-close {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 0 4px;
+    }
+
+    @keyframes toastIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes toastOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+
+    .duplicate-group {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .duplicate-group-header {
+      padding: 12px 16px;
+      background: rgba(255,190,11,0.1);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .duplicate-group-header:hover {
+      background: rgba(255,190,11,0.15);
+    }
+
+    .duplicate-group-files {
+      padding: 8px;
+    }
+
+    .savings-badge {
+      background: var(--secondary);
+      color: var(--bg-dark);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .analytics-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .analytics-bar {
+      height: 8px;
+      background: var(--bg-dark);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .analytics-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .history-item:last-child { border-bottom: none; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      border: 0;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
     .modal h3 {
       font-size: 1.4rem;
       margin-bottom: 15px;
@@ -985,6 +1136,12 @@
             <button id="startScanBtn" class="btn btn-primary" onclick="startScan('drive')">Scan Drive</button>
             <button id="startGmailBtn" class="btn btn-primary" onclick="startScan('gmail')" style="background:var(--gradient-lime)">Scan Gmail</button>
             <button id="startPhotosBtn" class="btn btn-primary" onclick="startScan('photos')" style="background:var(--gradient-cyan)">Find Photos</button>
+            <button class="btn btn-secondary" onclick="openAnalyticsModal()" title="Storage Analytics">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            </button>
+            <button class="btn btn-secondary" onclick="openShortcutsModal()" title="Keyboard Shortcuts">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
+            </button>
             <button id="cancelScanBtn" class="btn btn-secondary hidden" onclick="cancelScan()">Stop</button>
             <button class="btn btn-secondary" onclick="restoreAllTrash()" id="restoreTrashBtn" disabled>Restore All Trash</button>
             <button class="btn btn-danger" onclick="emptyTrash()" id="emptyTrashBtn" disabled>Empty Trash</button>
@@ -1079,6 +1236,8 @@
             <button class="btn btn-secondary btn-sm" onclick="keepNewest()" title="Keep newest duplicate">Newest</button>
             <button class="btn btn-secondary btn-sm" onclick="keepOldest()" title="Keep oldest duplicate">Oldest</button>
             <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>Delete Selected</button>
+            <button class="btn btn-secondary btn-sm" onclick="fixPermissions()" id="fixPermsBtn" disabled>Make Private</button>
+            <button class="btn btn-secondary btn-sm" onclick="undoDelete()" title="Undo recent deletions">Undo Delete</button>
             <select class="select-box" id="bulkSelect" onchange="applyBulkSelect(this.value);this.value=''">
               <option value="">Quick Select...</option>
               <option value="all">All in view</option>
@@ -1183,6 +1342,33 @@
     </div>
   </div>
 
+  <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
+
+  <div id="analyticsModal" class="modal-overlay">
+    <div class="modal" style="max-width:700px;max-height:80vh;overflow-y:auto">
+      <h3>Storage Analytics</h3>
+      <div id="analyticsContent" style="margin:20px 0"></div>
+      <button class="btn btn-secondary" onclick="closeAnalyticsModal()" style="width:100%">Close</button>
+    </div>
+  </div>
+
+  <div id="shortcutsModal" class="modal-overlay">
+    <div class="modal" style="max-width:500px">
+      <h3>Keyboard Shortcuts</h3>
+      <div style="margin:20px 0;display:grid;gap:10px">
+        <div class="key-hint"><span class="key">Space</span> Start/stop scan</div>
+        <div class="key-hint"><span class="key">S</span> Start/stop scan</div>
+        <div class="key-hint"><span class="key">Ctrl+A</span> Select all in view</div>
+        <div class="key-hint"><span class="key">Del</span> Delete selected</div>
+        <div class="key-hint"><span class="key">E</span> Export as CSV</div>
+        <div class="key-hint"><span class="key">1-9</span> Switch tabs</div>
+        <div class="key-hint"><span class="key">Esc</span> Close modal/cancel</div>
+        <div class="key-hint"><span class="key">?</span> Show this help</div>
+      </div>
+      <button class="btn btn-secondary" onclick="closeShortcutsModal()" style="width:100%">Close</button>
+    </div>
+  </div>
+
   <script>
     const FOLDER_MIME = 'application/vnd.google-apps.folder';
     const PAGE_SIZE = 100;
@@ -1265,9 +1451,19 @@
           closePreviewModal();
         } else if (document.getElementById('deleteModal').classList.contains('active')) {
           closeDeleteModal();
+        } else if (document.getElementById('analyticsModal').classList.contains('active')) {
+          closeAnalyticsModal();
+        } else if (document.getElementById('shortcutsModal').classList.contains('active')) {
+          closeShortcutsModal();
         } else if (currentJobId) {
           cancelScan();
         }
+        return;
+      }
+
+      if (event.code === 'Slash' && event.shiftKey) {
+        event.preventDefault();
+        openShortcutsModal();
         return;
       }
 
@@ -1441,13 +1637,14 @@
       if (msg.stage === 'Error') {
         currentJobId = null;
         toggleScanUI(false);
-        alert(`Error: ${msg.error}`);
+        showToast(`Scan failed: ${msg.error}`, 'error', 8000);
         return;
       }
 
       if (msg.stage === 'Canceled') {
         currentJobId = null;
         toggleScanUI(false);
+        showToast('Scan canceled', 'info');
         return;
       }
 
@@ -1473,7 +1670,7 @@
       }
 
       if (msg.data?.gmail || msg.data?.photos) {
-        alert('Scan complete. The summary cards have been updated.');
+        showToast('Scan complete. Summary cards updated.', 'success');
       }
     }
 
@@ -1900,6 +2097,7 @@
           <td class="file-date" title="${escapeHtml(file.modifiedTime || '')}">${file.modifiedTime ? formatAge(file.modifiedTime) : '-'}</td>
           <td class="file-actions">
             <button class="btn btn-sm btn-secondary" data-action="view">View</button>
+            <button class="btn btn-sm btn-secondary" data-action="rename" title="Rename">✏️</button>
             <button class="btn btn-sm ${file.trashed ? 'btn-success' : 'btn-danger'}" data-action="mutate">${file.trashed ? 'Restore' : 'Delete'}</button>
           </td>
         `;
@@ -1908,6 +2106,7 @@
           toggleSelect(file.id, event.target.checked);
         });
         tr.querySelector('[data-action="view"]').addEventListener('click', () => previewById(file.id));
+        tr.querySelector('[data-action="rename"]').addEventListener('click', () => renameFile(file.id, file.name));
         tr.querySelector('[data-action="mutate"]').addEventListener('click', () => {
           if (file.trashed) restoreFiles([file.id]);
           else deleteFile(file.id);
@@ -1968,9 +2167,11 @@
 
     function updateDeleteBtn() {
       const button = document.getElementById('deleteBtn');
+      const fixPermsBtn = document.getElementById('fixPermsBtn');
       const restoring = currentTab === 'trash';
       button.disabled = selectedFiles.size === 0;
       button.innerText = `${restoring ? 'Restore Selected' : 'Delete Selected'} (${selectedFiles.size})`;
+      fixPermsBtn.disabled = selectedFiles.size === 0;
     }
 
     function keepNewest() {
@@ -2409,7 +2610,234 @@ ${files.map((file) => `<div class="file"><div class="name">${escapeHtml(file.nam
       if (mime.includes('spreadsheet') || mime.includes('excel')) return '📊';
       if (mime.includes('document') || mime.includes('word')) return '📝';
       if (mime.includes('zip') || mime.includes('rar') || mime.includes('archive')) return '🗜️';
+      if (mime.includes('presentation') || mime.includes('slides')) return '📽️';
+      if (mime.includes('form')) return '📋';
+      if (mime.includes('drawing')) return '🎨';
+      if (mime.includes('script') || mime.includes('javascript') || mime.includes('json') || mime.includes('xml')) return '💻';
       return '📄';
+    }
+
+    function showToast(message, type = 'info', duration = 4000) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.setAttribute('role', 'alert');
+
+      const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+      toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || icons.info}</span>
+        <span class="toast-message">${escapeHtml(message)}</span>
+        <button class="toast-close" aria-label="Close notification">&times;</button>
+      `;
+
+      container.appendChild(toast);
+
+      const closeToast = () => {
+        toast.classList.add('toast-out');
+        setTimeout(() => toast.remove(), 300);
+      };
+
+      toast.querySelector('.toast-close').addEventListener('click', closeToast);
+      if (duration > 0) {
+        setTimeout(closeToast, duration);
+      }
+
+      return toast;
+    }
+
+    async function openAnalyticsModal() {
+      try {
+        const response = await authFetch('/api/storage/analytics');
+        if (!response.ok) {
+          showToast('Failed to load analytics', 'error');
+          return;
+        }
+
+        const data = await response.json();
+        const content = document.getElementById('analyticsContent');
+
+        const summary = data.cleanupSummary || {};
+        const potentialSavingsMB = (summary.potentialSavings || 0) / (1024 * 1024);
+
+        let html = `
+          <div class="analytics-card">
+            <h4 style="color:var(--secondary);margin-bottom:12px">Potential Savings</h4>
+            <div style="font-size:2rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--secondary)">
+              ${potentialSavingsMB > 1024 ? (potentialSavingsMB / 1024).toFixed(1) + ' GB' : potentialSavingsMB.toFixed(1) + ' MB'}
+            </div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:4px">From duplicates, large files, and temporary files</div>
+          </div>
+        `;
+
+        if (data.extensionBreakdown) {
+          const extEntries = Object.entries(data.extensionBreakdown).sort((a, b) => b[1] - a[1]).slice(0, 10);
+          const totalExt = extEntries.reduce((sum, [, count]) => sum + count, 0);
+          html += `<div class="analytics-card"><h4 style="color:var(--cyan);margin-bottom:12px">Top File Types</h4>`;
+          for (const [ext, count] of extEntries) {
+            const pct = totalExt > 0 ? (count / totalExt * 100).toFixed(1) : 0;
+            html += `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-size:13px">${escapeHtml(ext)}</span>
+                <span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">${count} (${pct}%)</span>
+              </div>
+              <div class="analytics-bar">
+                <div class="analytics-bar-fill" style="width:${pct}%;background:var(--primary)"></div>
+              </div>
+            `;
+          }
+          html += `</div>`;
+        }
+
+        if (data.ageDistribution) {
+          const ageEntries = Object.entries(data.ageDistribution);
+          const totalAge = ageEntries.reduce((sum, [, count]) => sum + count, 0);
+          html += `<div class="analytics-card"><h4 style="color:var(--warning);margin-bottom:12px">File Age Distribution</h4>`;
+          const colors = ['var(--secondary)', 'var(--cyan)', 'var(--primary)', 'var(--warning)', 'var(--danger)'];
+          for (const [label, count] of ageEntries.entries()) {
+            const pct = totalAge > 0 ? (count / totalAge * 100).toFixed(1) : 0;
+            html += `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-size:13px">${escapeHtml(ageEntries[label][0])}</span>
+                <span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">${count} (${pct}%)</span>
+              </div>
+              <div class="analytics-bar">
+                <div class="analytics-bar-fill" style="width:${pct}%;background:${colors[label] || 'var(--primary)'}"></div>
+              </div>
+            `;
+          }
+          html += `</div>`;
+        }
+
+        if (data.sizeDistribution) {
+          const sizeEntries = Object.entries(data.sizeDistribution);
+          const totalSize = sizeEntries.reduce((sum, [, count]) => sum + count, 0);
+          html += `<div class="analytics-card"><h4 style="color:var(--purple);margin-bottom:12px">File Size Distribution</h4>`;
+          for (const [label, count] of sizeEntries) {
+            const pct = totalSize > 0 ? (count / totalSize * 100).toFixed(1) : 0;
+            html += `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-size:13px">${escapeHtml(label)}</span>
+                <span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">${count} (${pct}%)</span>
+              </div>
+              <div class="analytics-bar">
+                <div class="analytics-bar-fill" style="width:${pct}%;background:var(--cyan)"></div>
+              </div>
+            `;
+          }
+          html += `</div>`;
+        }
+
+        content.innerHTML = html;
+        document.getElementById('analyticsModal').classList.add('active');
+      } catch (error) {
+        showToast('Failed to load analytics: ' + error.message, 'error');
+      }
+    }
+
+    function closeAnalyticsModal() {
+      document.getElementById('analyticsModal').classList.remove('active');
+    }
+
+    function openShortcutsModal() {
+      document.getElementById('shortcutsModal').classList.add('active');
+    }
+
+    function closeShortcutsModal() {
+      document.getElementById('shortcutsModal').classList.remove('active');
+    }
+
+    async function fixPermissions() {
+      const fileIds = [...selectedFiles];
+      if (fileIds.length === 0) {
+        showToast('No files selected', 'warning');
+        return;
+      }
+
+      if (!confirm(`Make ${fileIds.length} files private? This removes public/domain sharing.`)) {
+        return;
+      }
+
+      try {
+        const response = await authFetch('/api/files/permissions/fix', {
+          method: 'POST',
+          body: JSON.stringify({ fileIds, makePrivate: true })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+
+        showToast(`Fixed permissions for ${data.successCount} files`, 'success');
+        setTimeout(() => startScan('drive'), 1200);
+      } catch (error) {
+        showToast('Failed to fix permissions: ' + error.message, 'error');
+      }
+    }
+
+    async function renameFile(fileId, currentName) {
+      const newName = prompt('Enter new name:', currentName);
+      if (!newName || newName.trim() === currentName) return;
+
+      try {
+        const response = await authFetch('/api/files/rename', {
+          method: 'POST',
+          body: JSON.stringify({ fileId, newName: newName.trim() })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+
+        showToast('File renamed successfully', 'success');
+        const file = fileLookup.get(fileId);
+        if (file) {
+          file.name = newName.trim();
+          renderFiles();
+        }
+      } catch (error) {
+        showToast('Failed to rename: ' + error.message, 'error');
+      }
+    }
+
+    async function undoDelete() {
+      const recentIds = (scanData.recentDeletes || [])
+        .filter((r) => r.timestamp > Date.now() - 5 * 60 * 1000)
+        .map((r) => r.id);
+
+      if (recentIds.length === 0) {
+        showToast('No recent deletions to undo', 'warning');
+        return;
+      }
+
+      try {
+        const response = await authFetch('/api/files/undo-delete', {
+          method: 'POST',
+          body: JSON.stringify({ fileIds: recentIds })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+
+        showToast(`Restored ${data.successCount} files`, 'success');
+        setTimeout(() => startScan('drive'), 1200);
+      } catch (error) {
+        showToast('Failed to undo: ' + error.message, 'error');
+      }
+    }
+
+    function animateCounter(element, target, duration = 500) {
+      const start = parseInt(element.innerText.replace(/[^0-9]/g, '')) || 0;
+      const startTime = performance.now();
+
+      const update = (currentTime) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = Math.round(start + (target - start) * eased);
+        element.innerText = current.toLocaleString();
+        if (progress < 1) requestAnimationFrame(update);
+      };
+
+      requestAnimationFrame(update);
+    }
+
+    function addFadeIn(element) {
+      element.classList.add('fade-in');
     }
 
     init();

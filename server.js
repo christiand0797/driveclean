@@ -18,11 +18,14 @@ const SCAN_LIMIT = Number(process.env.SCAN_LIMIT || 50000);
 const DRIVE_PAGE_SIZE = 1000;
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const SESSIONS_FILE = path.join(__dirname, 'sessions.json');
+const HISTORY_FILE = path.join(__dirname, 'scan_history.json');
 
 const sessions = new Map();
 const scanJobs = new Map();
 const latestScans = new Map();
 const authStates = new Map();
+const scanHistory = [];
+const rateLimitMap = new Map();
 const SCANS_FILE = path.join(__dirname, 'scans.json');
 const DRIVE_SCAN_KEYS = [
   'capturedAt',
@@ -87,6 +90,24 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+const rateLimit = (maxRequests = 60, windowMs = 60 * 1000) => {
+  return (req, res, next) => {
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+    const windowStart = now - windowMs;
+    const entry = rateLimitMap.get(ip) || [];
+    const recent = entry.filter((timestamp) => timestamp > windowStart);
+    if (recent.length >= maxRequests) {
+      return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
+    recent.push(now);
+    rateLimitMap.set(ip, recent);
+    next();
+  };
+};
+
+app.use(rateLimit(120, 60 * 1000));
+
 const validateSession = (req, res, next) => {
   const session = req.headers['x-session'] || req.query.session;
   if (!session || typeof session !== 'string' || session.length > 100) {
@@ -147,6 +168,29 @@ function loadScans() {
     log(`Loaded ${latestScans.size} scans from disk.`);
   } catch (error) {
     log(`Failed to load scans: ${error.message}`, 'error');
+  }
+}
+
+function loadScanHistory() {
+  try {
+    if (!fs.existsSync(HISTORY_FILE)) {
+      return;
+    }
+    const data = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+    if (Array.isArray(data)) {
+      scanHistory.push(...data.slice(-200));
+      log(`Loaded ${scanHistory.length} scan history entries.`);
+    }
+  } catch (error) {
+    log(`Failed to load scan history: ${error.message}`, 'error');
+  }
+}
+
+function saveScanHistory() {
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(scanHistory.slice(-200), null, 2));
+  } catch (error) {
+    log(`Failed to save scan history: ${error.message}`, 'error');
   }
 }
 
@@ -858,6 +902,241 @@ app.post('/api/trash/empty', validateSession, async (req, res) => {
   }
 });
 
+app.post('/api/files/rename', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const { fileId, newName } = req.body;
+    if (!fileId || !newName || typeof newName !== 'string' || newName.trim().length === 0) {
+      return res.status(400).json({ error: 'Invalid file ID or name' });
+    }
+
+    const oauth = await getAuthClient(sessionId);
+    const drive = google.drive({ version: 'v3', auth: oauth });
+    await retryRequest(() =>
+      drive.files.update({
+        fileId,
+        supportsAllDrives: true,
+        requestBody: { name: newName.trim() }
+      })
+    );
+
+    invalidateDriveInventory(sessionId);
+    res.json({ message: 'File renamed successfully.' });
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
+app.post('/api/files/move', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const { fileId, targetFolderId } = req.body;
+    if (!fileId || !targetFolderId) {
+      return res.status(400).json({ error: 'Invalid file ID or target folder' });
+    }
+
+    const oauth = await getAuthClient(sessionId);
+    const drive = google.drive({ version: 'v3', auth: oauth });
+
+    const fileMeta = await retryRequest(() =>
+      drive.files.get({
+        fileId,
+        supportsAllDrives: true,
+        fields: 'parents'
+      })
+    );
+
+    const currentParents = fileMeta.data.parents || [];
+    await retryRequest(() =>
+      drive.files.update({
+        fileId,
+        supportsAllDrives: true,
+        addParents: targetFolderId,
+        removeParents: currentParents.join(','),
+        fields: 'id,parents'
+      })
+    );
+
+    invalidateDriveInventory(sessionId);
+    res.json({ message: 'File moved successfully.' });
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
+app.post('/api/files/permissions/fix', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const { fileIds, makePrivate } = req.body;
+    if (!Array.isArray(fileIds) || fileIds.length === 0 || fileIds.length > 100) {
+      return res.status(400).json({ error: 'Invalid file IDs' });
+    }
+
+    const oauth = await getAuthClient(sessionId);
+    const drive = google.drive({ version: 'v3', auth: oauth });
+
+    const results = await Promise.all(
+      fileIds.map(async (fileId) => {
+        try {
+          if (makePrivate) {
+            const permissions = await retryRequest(() =>
+              drive.permissions.list({ fileId, supportsAllDrives: true, fields: 'permissions(id,type)' })
+            );
+            const publicPermissions = permissions.data.permissions.filter(
+              (p) => p.type === 'anyone' || p.type === 'domain'
+            );
+            for (const perm of publicPermissions) {
+              await retryRequest(() =>
+                drive.permissions.delete({
+                  fileId,
+                  permissionId: perm.id,
+                  supportsAllDrives: true
+                })
+              );
+            }
+          }
+          return { id: fileId, ok: true };
+        } catch (error) {
+          return { id: fileId, ok: false, error: error.message };
+        }
+      })
+    );
+
+    const successIds = results.filter((r) => r.ok).map((r) => r.id);
+    const failed = results.filter((r) => !r.ok);
+
+    if (successIds.length > 0) {
+      invalidateDriveInventory(sessionId);
+    }
+
+    res.json({
+      message: `Fixed permissions for ${successIds.length} files.`,
+      successIds,
+      failed,
+      successCount: successIds.length,
+      failureCount: failed.length
+    });
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
+app.post('/api/files/undo-delete', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const { fileIds } = req.body;
+    if (!Array.isArray(fileIds) || fileIds.length === 0 || fileIds.length > 50) {
+      return res.status(400).json({ error: 'Invalid file IDs (max 50 for undo)' });
+    }
+
+    const scan = latestScans.get(sessionId);
+    const recentDeletes = scan?.recentDeletes || [];
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    const validIds = fileIds.filter((id) => {
+      const record = recentDeletes.find((r) => r.id === id);
+      return record && record.timestamp > fiveMinutesAgo;
+    });
+
+    if (validIds.length === 0) {
+      return res.status(400).json({ error: 'No recent deletions found to undo' });
+    }
+
+    const result = await mutateFiles(sessionId, validIds, { trashed: false });
+    if (result.successCount > 0) {
+      const updatedDeletes = (scan?.recentDeletes || []).filter(
+        (r) => !validIds.includes(r.id)
+      );
+      mergeLatestScan(sessionId, { recentDeletes: updatedDeletes });
+      invalidateDriveInventory(sessionId);
+    }
+
+    res.json({
+      message: `Restored ${result.successCount} files.`,
+      ...result
+    });
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
+app.get('/api/scan/history', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const sessionHistory = scanHistory.filter((entry) => entry.sessionId === sessionId);
+    res.json({ history: sessionHistory.slice(-20) });
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
+app.get('/api/storage/analytics', validateSession, async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session'];
+    const scan = getLatestScan(sessionId);
+
+    const extensionBreakdown = {};
+    const mimeTypeBreakdown = {};
+    const ageDistribution = { '0-30d': 0, '30-90d': 0, '90-180d': 0, '180-365d': 0, '1y+': 0 };
+    const sizeDistribution = { '0-1MB': 0, '1-10MB': 0, '10-100MB': 0, '100MB-1GB': 0, '1GB+': 0 };
+
+    const now = new Date();
+    for (const file of scan.files || []) {
+      const ext = buildExtension(file.name);
+      extensionBreakdown[ext] = (extensionBreakdown[ext] || 0) + 1;
+
+      const mimeCategory = (file.mimeType || 'other').split('/')[0];
+      mimeTypeBreakdown[mimeCategory] = (mimeTypeBreakdown[mimeCategory] || 0) + 1;
+
+      if (file.modifiedTime) {
+        const ageDays = (now - new Date(file.modifiedTime)) / (1000 * 60 * 60 * 24);
+        if (ageDays <= 30) ageDistribution['0-30d']++;
+        else if (ageDays <= 90) ageDistribution['30-90d']++;
+        else if (ageDays <= 180) ageDistribution['90-180d']++;
+        else if (ageDays <= 365) ageDistribution['180-365d']++;
+        else ageDistribution['1y+']++;
+      }
+
+      const size = Number(file.size || 0);
+      if (size <= 1024 * 1024) sizeDistribution['0-1MB']++;
+      else if (size <= 10 * 1024 * 1024) sizeDistribution['1-10MB']++;
+      else if (size <= 100 * 1024 * 1024) sizeDistribution['10-100MB']++;
+      else if (size <= 1024 * 1024 * 1024) sizeDistribution['100MB-1GB']++;
+      else sizeDistribution['1GB+']++;
+    }
+
+    const cleanupSummary = {
+      totalFiles: scan.total || 0,
+      totalSize: scan.totalSize || 0,
+      duplicates: scan.duplicates?.length || 0,
+      duplicateWastedBytes: (scan.duplicates || []).reduce((sum, f) => sum + Number(f.wastedBytes || 0), 0),
+      largeFiles: scan.large?.length || 0,
+      oldFiles: scan.old?.length || 0,
+      emptyFiles: scan.empty?.length || 0,
+      emptyFolders: scan.emptyFolders?.length || 0,
+      publicFiles: scan.public?.length || 0,
+      sharedFiles: scan.shared?.length || 0,
+      orphanFiles: scan.orphan?.length || 0,
+      hiddenFiles: scan.hidden?.length || 0,
+      temporaryFiles: scan.temporary?.length || 0,
+      trashFiles: scan.trash?.length || 0,
+      potentialSavings: (scan.duplicates || []).reduce((sum, f) => sum + Number(f.wastedBytes || 0), 0) +
+        (scan.large || []).reduce((sum, f) => sum + Number(f.size || 0), 0) +
+        (scan.empty || []).length * 0 +
+        (scan.temporary || []).reduce((sum, f) => sum + Number(f.size || 0), 0)
+    };
+
+    res.json({
+      extensionBreakdown,
+      mimeTypeBreakdown,
+      ageDistribution,
+      sizeDistribution,
+      cleanupSummary
+    });
+  } catch (error) {
+    respondWithError(res, error);
+  }
+});
+
 function gmailBeforeDate(daysAgo) {
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
@@ -1441,6 +1720,21 @@ async function runDriveScan(jobId, ws) {
 
     const persistedScan = mergeLatestScan(job.session, scanData);
 
+    scanHistory.push({
+      sessionId: job.session,
+      timestamp: new Date().toISOString(),
+      total: persistedScan.total,
+      totalSize: persistedScan.totalSize,
+      duplicates: persistedScan.duplicates?.length || 0,
+      large: persistedScan.large?.length || 0,
+      old: persistedScan.old?.length || 0,
+      scope: scope.mode
+    });
+
+    if (scanHistory.length > 200) {
+      scanHistory.splice(0, scanHistory.length - 200);
+    }
+
     const summary = {
       capturedAt: persistedScan.capturedAt,
       scope: persistedScan.scope,
@@ -1479,9 +1773,11 @@ app.get('/', (req, res) => {
 
 loadSessions();
 loadScans();
+loadScanHistory();
 saveScans();
 setInterval(saveSessions, 5 * 60 * 1000);
 setInterval(saveScans, 5 * 60 * 1000);
+setInterval(saveScanHistory, 5 * 60 * 1000);
 setInterval(cleanupAuthStates, 5 * 60 * 1000);
 
 process.on('SIGINT', () => shutdown('SIGINT'));
@@ -1491,6 +1787,7 @@ function shutdown(signal) {
   log(`Received ${signal}. Saving sessions and shutting down...`);
   saveSessions();
   saveScans();
+  saveScanHistory();
   server.close(() => {
     log('HTTP server closed.');
     process.exit(0);
