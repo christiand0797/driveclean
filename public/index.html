@@ -1034,18 +1034,65 @@
     @media (max-width: 900px) {
       .quick-stats { grid-template-columns: repeat(2, 1fr); }
       .stat-card.large { grid-column: span 1; }
+      .scanner-header { flex-direction: column; align-items: flex-start !important; }
+      .scanner-header > div { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+      .toolbar { flex-direction: column; align-items: stretch !important; }
+      .toolbar > * { width: 100% !important; }
     }
 
     @media (max-width: 768px) {
+      .container { padding: 10px; }
+      .header-content { padding: 0 10px; }
+      .logo { font-size: 1.2rem; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .stat-card { padding: 14px; }
+      .stat-number { font-size: 1.5rem; }
+      .stat-label { font-size: 0.75rem; }
+
       .file-table { display: block; }
       .file-table thead { display: none; }
       .file-table, .file-table tbody, .file-table tr, .file-table td { display: block; }
-      .file-table tr { padding: 15px 0; border-bottom: 2px solid var(--border); }
-      .file-table td { padding: 8px 0; }
+      .file-table tr { padding: 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated); }
+      .file-table td { padding: 4px 0; border-bottom: none; }
       .file-checkbox { display: none; }
-      .file-name { max-width: 100%; }
+      .file-thumbnail-col { display: none; }
+      .file-name { max-width: 100%; font-size: 14px; }
+      .file-actions { justify-content: flex-start; gap: 8px; }
+      .file-actions .btn { flex: 1; text-align: center; }
+
+      .grid-view { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+      .grid-item-thumbnail, .grid-item-icon { height: 100px; }
+
+      .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .tab { padding: 10px 16px; font-size: 11px; }
+
+      #loginSection h1 { font-size: 2.5rem; }
+      #loginSection .tagline { font-size: 1rem; }
+      .login-features { flex-direction: column; align-items: center; }
+
+      .modal { width: 95%; padding: 20px; }
+      .modal-stats { grid-template-columns: repeat(2, 1fr); }
+
+      .quick-stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .quick-stat { padding: 10px; }
+      .quick-stat-value { font-size: 1rem; }
+      .quick-stat-label { font-size: 10px; }
+
+      .scanner-header h3 { font-size: 1.1rem; }
+      .btn { padding: 8px 16px; font-size: 12px; }
+      .btn-sm { padding: 6px 10px; font-size: 10px; }
     }
-  </style>
+
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .grid-view { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .grid-item-thumbnail, .grid-item-icon { height: 80px; }
+      .grid-item-name { font-size: 11px; }
+      .grid-item-size { font-size: 10px; }
+      .duplicate-group-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
 </head>
 <body>
 
@@ -1363,6 +1410,7 @@
             </select>
             <button class="btn btn-secondary btn-sm" onclick="keepNewest()" title="Keep newest duplicate">Newest</button>
             <button class="btn btn-secondary btn-sm" onclick="keepOldest()" title="Keep oldest duplicate">Oldest</button>
+            <button class="btn btn-primary btn-sm" onclick="quickClean()" id="quickCleanBtn" style="background:var(--gradient-lime);color:var(--bg-dark)">Quick Clean</button>
             <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>Delete Selected</button>
             <button class="btn btn-secondary btn-sm" onclick="fixPermissions()" id="fixPermsBtn" disabled>Make Private</button>
             <button class="btn btn-secondary btn-sm" onclick="undoDelete()" title="Undo recent deletions">Undo Delete</button>
@@ -1372,6 +1420,9 @@
               <option value="large">All large files</option>
               <option value="old">All old files</option>
               <option value="empty">All empty files</option>
+              <option value="temporary">All temporary files</option>
+              <option value="duplicates">All duplicate copies</option>
+              <option value="trash">All trashed files</option>
             </select>
             <button class="btn btn-cyber" onclick="exportData('csv')" id="exportCsvBtn">CSV</button>
             <button class="btn btn-cyber" onclick="exportData('json')" id="exportJsonBtn">JSON</button>
@@ -1410,6 +1461,7 @@
               <tbody id="fileTableBody"></tbody>
             </table>
             <div id="gridView" class="grid-view hidden"></div>
+            <div id="duplicateGroupsView" class="hidden"></div>
           </div>
 
           <div id="paginationBar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px">
@@ -2216,6 +2268,7 @@
     function renderFiles() {
       const tbody = document.getElementById('fileTableBody');
       const gridContainer = document.getElementById('gridView');
+      const dupGroupsContainer = document.getElementById('duplicateGroupsView');
       const emptyState = document.getElementById('emptyState');
 
       filteredFiles = getFilteredFiles();
@@ -2228,10 +2281,12 @@
 
       tbody.innerHTML = '';
       gridContainer.innerHTML = '';
+      dupGroupsContainer.innerHTML = '';
 
       if (filteredFiles.length === 0) {
         tbody.classList.add('hidden');
         gridContainer.classList.add('hidden');
+        dupGroupsContainer.classList.add('hidden');
         emptyState.classList.remove('hidden');
         renderPagination(0, totalPages);
         updateDeleteBtn();
@@ -2240,18 +2295,126 @@
 
       emptyState.classList.add('hidden');
 
-      if (currentView === 'table') {
+      if (currentTab === 'duplicates' && scanData.duplicateGroups?.length > 0) {
+        tbody.classList.add('hidden');
+        gridContainer.classList.add('hidden');
+        dupGroupsContainer.classList.remove('hidden');
+        renderDuplicateGroups();
+      } else if (currentView === 'table') {
         tbody.classList.remove('hidden');
         gridContainer.classList.add('hidden');
+        dupGroupsContainer.classList.add('hidden');
         renderTableView(visibleFiles);
       } else {
         tbody.classList.add('hidden');
         gridContainer.classList.remove('hidden');
+        dupGroupsContainer.classList.add('hidden');
         renderGridView(visibleFiles);
       }
 
       renderPagination(filteredFiles.length, totalPages);
       updateDeleteBtn();
+    }
+
+    function renderDuplicateGroups() {
+      const container = document.getElementById('duplicateGroupsView');
+      const groups = scanData.duplicateGroups || [];
+
+      let html = `<div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div style="color:var(--text-dim);font-size:13px">${groups.length} duplicate groups found</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="selectAllDuplicateCopies('newest')">Select all except newest</button>
+          <button class="btn btn-secondary btn-sm" onclick="selectAllDuplicateCopies('oldest')">Select all except oldest</button>
+        </div>
+      </div>`;
+
+      const totalWasted = groups.reduce((sum, g) => sum + Number(g.wastedBytes || 0), 0);
+      html += `<div style="background:rgba(255,190,11,0.1);border:1px solid var(--warning);border-radius:8px;padding:12px 16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--warning);font-size:14px">Total potential savings</span>
+        <span class="savings-badge">${formatBytes(totalWasted)}</span>
+      </div>`;
+
+      groups.forEach((group, index) => {
+        const files = (scanData.duplicates || []).filter((f) => f.duplicateGroupId === group.id);
+        const sorted = [...files].sort((a, b) => {
+          const sizeDelta = Number(b.size || 0) - Number(a.size || 0);
+          if (sizeDelta !== 0) return sizeDelta;
+          return new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0);
+        });
+
+        html += `<div class="duplicate-group">
+          <div class="duplicate-group-header" onclick="toggleDuplicateGroup(${index})">
+            <div>
+              <div style="font-weight:600;font-size:14px">${escapeHtml(group.name)}</div>
+              <div style="font-size:12px;color:var(--text-dim);margin-top:4px">${group.fileCount} copies • ${group.detection === 'content' ? 'Content match' : 'Name/size match'} • Wasted: ${formatBytes(group.wastedBytes)}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="savings-badge">${formatBytes(group.wastedBytes)}</span>
+              <svg id="dupArrow${index}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform 0.2s"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+          <div id="dupGroupFiles${index}" class="duplicate-group-files hidden">`;
+
+        sorted.forEach((file, fileIndex) => {
+          const thumbnailUrl = getThumbnailUrl(file, 96);
+          const hasThumbnail = thumbnailUrl && file.mimeType !== FOLDER_MIME;
+          const isKeep = fileIndex === 0;
+          const isSelected = selectedFiles.has(file.id);
+
+          html += `<div style="display:flex;align-items:center;gap:12px;padding:10px;border-bottom:1px solid var(--border);${isKeep ? 'background:rgba(0,255,159,0.05)' : ''}">
+            <input type="checkbox" data-file-id="${escapeHtml(file.id)}" ${isSelected ? 'checked' : ''} ${isKeep ? 'disabled' : ''} style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer">
+            ${hasThumbnail
+              ? `<img src="${escapeHtml(thumbnailUrl)}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid var(--border)" loading="lazy">`
+              : `<span style="font-size:1.5rem">${getIcon(file.mimeType)}</span>`
+            }
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(file.name)}</div>
+              <div style="font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">${formatBytes(file.size || 0)} • ${file.modifiedTime ? formatAge(file.modifiedTime) : 'Unknown'}</div>
+            </div>
+            ${isKeep ? '<span class="badge badge-success">Keep</span>' : '<span class="badge badge-warning">Duplicate</span>'}
+            <button class="btn btn-sm btn-secondary" onclick="previewById('${escapeHtml(file.id)}')">View</button>
+          </div>`;
+        });
+
+        html += `</div></div>`;
+      });
+
+      container.innerHTML = html;
+
+      container.querySelectorAll('input[data-file-id]').forEach((checkbox) => {
+        checkbox.addEventListener('change', (event) => {
+          const id = event.target.dataset.fileId;
+          if (event.target.checked) selectedFiles.add(id);
+          else selectedFiles.delete(id);
+          updateDeleteBtn();
+        });
+      });
+    }
+
+    function toggleDuplicateGroup(index) {
+      const filesDiv = document.getElementById(`dupGroupFiles${index}`);
+      const arrow = document.getElementById(`dupArrow${index}`);
+      filesDiv.classList.toggle('hidden');
+      arrow.style.transform = filesDiv.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+    }
+
+    function selectAllDuplicateCopies(strategy) {
+      selectedFiles.clear();
+      const groups = scanData.duplicateGroups || [];
+      const allDupFiles = scanData.duplicates || [];
+
+      groups.forEach((group) => {
+        const files = allDupFiles.filter((f) => f.duplicateGroupId === group.id);
+        const sorted = [...files].sort((a, b) => {
+          const aTime = new Date(a.modifiedTime || 0).getTime();
+          const bTime = new Date(b.modifiedTime || 0).getTime();
+          return strategy === 'newest' ? bTime - aTime : aTime - bTime;
+        });
+        sorted.slice(1).forEach((file) => selectedFiles.add(file.id));
+      });
+
+      renderFiles();
+      showToast(`Selected ${selectedFiles.size} duplicate copies`, 'success');
     }
 
     function renderTableView(files) {
@@ -2436,6 +2599,76 @@
         sorted.slice(1).forEach((file) => selectedFiles.add(file.id));
       }
       renderFiles();
+    }
+
+    function quickClean() {
+      const toSelect = new Set();
+      let summary = [];
+
+      const tempFiles = scanData.temporary || [];
+      if (tempFiles.length > 0) {
+        tempFiles.forEach((f) => toSelect.add(f.id));
+        summary.push(`${tempFiles.length} temporary files`);
+      }
+
+      const emptyFiles = scanData.empty || [];
+      if (emptyFiles.length > 0) {
+        emptyFiles.forEach((f) => toSelect.add(f.id));
+        summary.push(`${emptyFiles.length} empty files`);
+      }
+
+      const emptyFolders = scanData.emptyFolders || [];
+      if (emptyFolders.length > 0) {
+        emptyFolders.forEach((f) => toSelect.add(f.id));
+        summary.push(`${emptyFolders.length} empty folders`);
+      }
+
+      const trashFiles = scanData.trash || [];
+      if (trashFiles.length > 0) {
+        trashFiles.forEach((f) => toSelect.add(f.id));
+        summary.push(`${trashFiles.length} trashed files`);
+      }
+
+      const dupGroups = new Map();
+      (scanData.duplicates || []).forEach((file) => {
+        const groupId = file.duplicateGroupId || file.name;
+        const existing = dupGroups.get(groupId) || [];
+        existing.push(file);
+        dupGroups.set(groupId, existing);
+      });
+
+      let dupCopiesSelected = 0;
+      let dupWastedBytes = 0;
+      for (const files of dupGroups.values()) {
+        if (files.length < 2) continue;
+        const sorted = [...files].sort((a, b) => new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0));
+        sorted.slice(1).forEach((file) => {
+          toSelect.add(file.id);
+          dupCopiesSelected++;
+          dupWastedBytes += Number(file.wastedBytes || 0);
+        });
+      }
+      if (dupCopiesSelected > 0) {
+        summary.push(`${dupCopiesSelected} duplicate copies (${formatBytes(dupWastedBytes)} wasted)`);
+      }
+
+      if (toSelect.size === 0) {
+        showToast('No files found for quick clean', 'info');
+        return;
+      }
+
+      const totalSize = [...toSelect]
+        .map((id) => fileLookup.get(id))
+        .filter(Boolean)
+        .reduce((sum, f) => sum + Number(f.size || 0), 0);
+
+      const message = `Quick Clean will select:\n\n${summary.join('\n')}\n\nTotal: ${toSelect.size} files (${formatBytes(totalSize)})\n\nThis is safe - it only targets temporary files, empty files/folders, trash, and duplicate copies (keeping the newest).`;
+
+      if (!confirm(message)) return;
+
+      selectedFiles = toSelect;
+      renderFiles();
+      showToast(`Selected ${toSelect.size} files for cleanup`, 'success');
     }
 
     function filterFiles() {
